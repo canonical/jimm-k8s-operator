@@ -11,13 +11,8 @@ on:
 # charmcraft login --export=secrets.auth --charm=juju-jimm-k8s --permission=package-manage --permission=package-view --ttl=15552000
 
 jobs:
-  charm-tests:
-    uses: ./.github/workflows/test.yaml
-
   release-charm:
     name: Release charm
-    needs:
-      - charm-tests
     runs-on: ubuntu-20.04
     timeout-minutes: 60
     steps:
