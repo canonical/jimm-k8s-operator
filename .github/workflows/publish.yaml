@@ -13,6 +13,8 @@ on:
 jobs:
   charm-tests:
     uses: ./.github/workflows/test.yaml
+    secrets:
+      IMAGE_PULL_TOKEN: ${{ secrets.IMAGE_PULL_TOKEN }}
 
   release-charm:
     name: Release charm

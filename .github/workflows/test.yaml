@@ -1,6 +1,9 @@
 name: Charm Test
 on:
   workflow_call:
+    secrets:
+      IMAGE_PULL_TOKEN:
+        required: true
   workflow_dispatch:
   pull_request:
 
