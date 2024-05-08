@@ -1,8 +1,8 @@
 # JIMM (K8s Charm)
 
 [![CharmHub Badge](https://charmhub.io/juju-jimm-k8s/badge.svg)](https://charmhub.io/juju-jimm-k8s)
-[![Release](https://github.com/canonical/jimm/actions/workflows/charm-release.yaml/badge.svg)](https://github.com/canonical/jimm/actions/workflows/charm-release.yaml)
-[![Tests](https://github.com/canonical/jimm/actions/workflows/charm-test.yaml/badge.svg?branch=v3)](https://github.com/canonical/jimm/actions/workflows/charm-test.yaml?query=branch%3Av3)
+[![Release](https://github.com/canonical/jimm-k8s-operator/actions/workflows/publish.yaml/badge.svg)](https://github.com/canonical/jimm-k8s-operator/actions/workflows/publish.yaml)
+[![Tests](https://github.com/canonical/jimm-k8s-operator/actions/workflows/test.yaml/badge.svg)](https://github.com/canonical/jimm-k8s-operator/actions/workflows/test.yaml)
 
 ## Description
 
