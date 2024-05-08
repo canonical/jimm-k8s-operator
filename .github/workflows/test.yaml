@@ -1,0 +1,76 @@
+name: Charm Test
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  charm-build:
+    uses: ./.github/workflows/build.yaml
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Install dependencies
+        run: python3 -m pip install tox
+      - name: Run linters
+        run: tox -e lint
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Install dependencies
+        run: python -m pip install tox
+      - name: Run tests
+        run: tox -e unit
+
+  integration-tests:
+    name: Integration tests
+    needs:
+      - charm-build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup operator environment
+        uses: charmed-kubernetes/actions-operator@main
+        with:
+          channel: 1.28-strict/stable
+          juju-channel: 3.4/stable
+          provider: microk8s
+          microk8s-group: snap_microk8s
+          microk8s-addons: "ingress hostpath-storage dns registry metallb:10.64.140.43/30"
+      # Instructions from https://microk8s.io/docs/registry-private
+      # and https://github.com/containerd/cri/blob/master/docs/registry.md
+      # Bash explanation https://stackoverflow.com/questions/15429330/how-to-specify-a-multi-line-shell-variable#comment21828145_15429426
+      - name: Setup microk8s for private registry
+        run: |
+          read -r -d '' REGISTRY_CONFIG << EOL || true
+            [plugins."io.containerd.grpc.v1.cri".registry.configs."ghcr.io".auth]
+              username = "${{ github.actor }}"
+              password = "${{ secrets.IMAGE_PULL_TOKEN }}"
+          EOL
+          echo "$REGISTRY_CONFIG" | sudo tee -a /var/snap/microk8s/current/args/containerd-template.toml
+          sudo snap restart microk8s.daemon-containerd
+      # Download the charm from the build to speed up integration tests.
+      - uses: actions/download-artifact@v4
+        with:
+          name: jimm-k8s-charm
+      - name: Install tox
+        run: python -m pip install tox
+      - name: Integration tests
+        run: tox -e integration -- --localCharm
+      - name: Dump logs
+        if: failure()
+        uses: canonical/charming-actions/dump-logs@main
