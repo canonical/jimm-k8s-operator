@@ -75,6 +75,7 @@ REQUIRED_SETTINGS = {
     "OPENFGA_SCHEME": "missing openfga relation",
     "OPENFGA_TOKEN": "missing openfga relation",
     "OPENFGA_PORT": "missing openfga relation",
+    "JIMM_DASHBOARD_FINAL_REDIRECT_URL": "mising final-redirect-url configuration",
     "BAKERY_PRIVATE_KEY": "missing private key configuration",
     "BAKERY_PUBLIC_KEY": "missing public key configuration",
 }
