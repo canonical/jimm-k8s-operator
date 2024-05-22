@@ -35,6 +35,7 @@ OPENFGA_PROVIDER_INFO = {
 
 MINIMAL_CONFIG = {
     "uuid": "1234567890",
+    "dns-name": "jimm.localhost",
     "public-key": "izcYsQy3TePp6bLjqOo3IRPFvkQd2IKtyODGqC6SdFk=",
     "private-key": "ly/dzsI9Nt/4JxUILQeAX79qZ4mygDiuYGqc2ZEiDEc=",
     "final-redirect-url": "some-url",
@@ -42,7 +43,7 @@ MINIMAL_CONFIG = {
 
 BASE_ENV = {
     "JIMM_DASHBOARD_LOCATION": "https://jaas.ai/models",
-    "JIMM_DNS_NAME": "juju-jimm-k8s-0.juju-jimm-k8s-endpoints.jimm-model.svc.cluster.local",
+    "JIMM_DNS_NAME": "jimm.localhost",
     "JIMM_ENABLE_JWKS_ROTATOR": "1",
     "JIMM_LISTEN_ADDR": ":8080",
     "JIMM_LOG_LEVEL": "info",
@@ -364,6 +365,7 @@ class TestCharm(TestCase):
         harness.set_leader(True)
         harness.update_config(
             {
+                "dns-name": "jimm.localhost",
                 "controller-admins": "user1 user2 group1",
                 "uuid": "caaa4ba4-e2b5-40dd-9bf3-2bd26d6e17aa",
             }
@@ -376,7 +378,7 @@ class TestCharm(TestCase):
         self.assertTrue(data)
         self.assertEqual(
             data["controller_url"],
-            "wss://juju-jimm-k8s-0.juju-jimm-k8s-endpoints.None.svc.cluster.local",
+            "wss://jimm.localhost",
         )
         self.assertEqual(data["is_juju"], "False")
 
