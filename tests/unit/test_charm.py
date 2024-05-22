@@ -10,9 +10,9 @@ import tempfile
 from unittest import TestCase, mock
 
 from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
-from ops.testing import ActionFailed, Harness
+from ops.testing import Harness
 
-from src.charm import JimmOperatorCharm
+from src.charm import WORKLOAD_CONTAINER, JimmOperatorCharm
 
 OAUTH_CLIENT_ID = "jimm_client_id"
 OAUTH_CLIENT_SECRET = "test-secret"
@@ -51,6 +51,7 @@ BASE_ENV = {
     "JIMM_WATCH_CONTROLLERS": "1",
     "BAKERY_PRIVATE_KEY": "ly/dzsI9Nt/4JxUILQeAX79qZ4mygDiuYGqc2ZEiDEc=",
     "BAKERY_PUBLIC_KEY": "izcYsQy3TePp6bLjqOo3IRPFvkQd2IKtyODGqC6SdFk=",
+    "OPENFGA_AUTH_MODEL": 1,
     "JIMM_AUDIT_LOG_RETENTION_PERIOD_IN_DAYS": "0",
     "JIMM_MACAROON_EXPIRY_DURATION": "24h",
     "JIMM_JWT_EXPIRY": "5m",
@@ -195,12 +196,20 @@ class TestCharm(TestCase):
             },
         )
 
+    def create_auth_model_info(self):
+        root = self.harness.get_filesystem_root(WORKLOAD_CONTAINER)
+        dir_path = root / "root" / "openfga"
+        dir_path.mkdir(parents=True)
+        (dir_path / "authorisation_model.json").write_text("null")
+        self.harness.charm._state.openfga_auth_model_hash = "37a6259cc0c1dae299a7866489dff0bd"
+        self.harness.charm._state.openfga_auth_model_id = 1
+
     def start_minimal_jimm(self):
         self.harness.enable_hooks()
         self.harness.charm._state.dsn = "postgres-dsn"
+        self.create_auth_model_info()
         self.add_openfga_relation()
         self.add_vault_relation()
-        self.harness.charm._state.openfga_auth_model_id = 1
         self.harness.update_config(MINIMAL_CONFIG)
         self.assertEqual(self.harness.charm.unit.status.name, ActiveStatus.name)
         self.assertEqual(self.harness.charm.unit.status.message, "running")
@@ -232,6 +241,7 @@ class TestCharm(TestCase):
 
     def test_on_pebble_ready(self):
         self.harness.enable_hooks()
+        self.create_auth_model_info()
         self.add_vault_relation()
         self.harness.update_config(MINIMAL_CONFIG)
 
@@ -251,6 +261,7 @@ class TestCharm(TestCase):
 
     def test_on_config_changed(self):
         self.harness.enable_hooks()
+        self.create_auth_model_info()
         self.add_vault_relation()
         container = self.harness.model.unit.get_container("jimm")
         self.harness.charm.on.jimm_pebble_ready.emit(container)
@@ -279,12 +290,14 @@ class TestCharm(TestCase):
 
     def test_postgres_relation_joined(self):
         self.harness.enable_hooks()
+        self.create_auth_model_info()
         self.add_postgres_relation()
         self.assertEqual(
             self.harness.charm._state.dsn, "postgresql://postgres-user:postgres-pass@local-1.localhost/jimm"
         )
 
     def test_postgres_secret_storage_config(self):
+        self.create_auth_model_info()
         self.harness.update_config(MINIMAL_CONFIG)
         self.harness.update_config({"postgres-secret-storage": True})
         container = self.harness.model.unit.get_container("jimm")
@@ -340,6 +353,7 @@ class TestCharm(TestCase):
 
     def test_audit_log_retention_config(self):
         self.harness.enable_hooks()
+        self.create_auth_model_info()
         self.add_vault_relation()
         container = self.harness.model.unit.get_container("jimm")
         self.harness.charm.on.jimm_pebble_ready.emit(container)
@@ -383,6 +397,7 @@ class TestCharm(TestCase):
         self.assertEqual(data["is_juju"], "False")
 
     def test_vault_relation_joined(self):
+        self.create_auth_model_info()
         self.harness.enable_hooks()
         self.add_vault_relation()
 
@@ -395,6 +410,7 @@ class TestCharm(TestCase):
         # Fake the Postgres relation.
         self.harness.charm._state.dsn = "postgres-dsn"
         # Setup the OpenFGA relation.
+        self.create_auth_model_info()
         self.add_openfga_relation()
         self.add_vault_relation()
         self.harness.charm._state.openfga_auth_model_id = 1
@@ -413,7 +429,7 @@ class TestCharm(TestCase):
         self.assertEqual(self.harness.charm.unit.status.message, "running")
 
     @mock.patch("src.charm.requests.post")
-    def test_create_auth_model_action(self, mock_post):
+    def test_setup_fga_auth_model(self, mock_post):
         def mocked_requests_post(*args, **kwargs):
             class MockResponse:
                 def __init__(self, json_data, status_code):
@@ -428,11 +444,25 @@ class TestCharm(TestCase):
 
         mock_post.side_effect = mocked_requests_post
         self.harness.enable_hooks()
+        root = self.harness.get_filesystem_root(WORKLOAD_CONTAINER)
+        dir_path = root / "root" / "openfga"
+        dir_path.mkdir(parents=True)
+        (dir_path / "authorisation_model.json").write_text("null")
         self.add_openfga_relation()
-        self.harness.run_action("create-authorization-model", {"model": "null"})
         self.assertEqual(self.harness.charm._state.openfga_auth_model_id, 123)
+        self.assertNotEqual(self.harness.charm._state.openfga_auth_model_hash, "")
 
-    def test_create_auth_model_action_without_openfga_relation(self):
-        with self.assertRaises(ActionFailed) as e:
-            self.harness.run_action("create-authorization-model", {"model": "null"})
-        self.assertEqual(str(e.exception.message), "missing openfga relation")
+    def test_setup_fga_auth_model_skipped_when_auth_model_exists(self):
+        self.harness.enable_hooks()
+        root = self.harness.get_filesystem_root(WORKLOAD_CONTAINER)
+        dir_path = root / "root" / "openfga"
+        dir_path.mkdir(parents=True)
+        (dir_path / "authorisation_model.json").write_text("null")
+        self.harness.charm._state.openfga_auth_model_hash = "37a6259cc0c1dae299a7866489dff0bd"
+        with self.assertLogs() as cm:
+            self.add_openfga_relation()
+            found = False
+            for line in cm.output:
+                found |= "auth model already exists, won't recreate" in line
+            self.assertTrue(found)
+        self.assertEqual(self.harness.charm._state.openfga_auth_model_id, None)

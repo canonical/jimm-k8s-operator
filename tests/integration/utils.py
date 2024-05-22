@@ -1,15 +1,12 @@
 import asyncio
 import logging
 import os
-import time
 from pathlib import Path
 from typing import Dict
 from urllib.parse import ParseResult
 
 import requests
-import utils
 import yaml
-from juju.action import Action
 from juju.unit import Unit
 from oauth_tools.conftest import *  # noqa
 from oauth_tools.constants import APPS
@@ -108,30 +105,8 @@ async def deploy_jimm(ops_test: OpsTest, charm: Path) -> JimmEnv:
     logger.info("adding postgresql relation")
     await ops_test.model.integrate(APP_NAME, "jimm-db:database")
 
-    logger.info("adding ouath relation")
+    logger.info("adding oauth relation")
     await ops_test.model.integrate(f"{APP_NAME}:oauth", APPS.HYDRA)
-
-    logger.info("waiting for jimm to be blocked pending auth model creation")
-    await ops_test.model.wait_for_idle(
-        apps=[APP_NAME],
-        status="blocked",
-        timeout=2000,
-    )
-
-    logger.info("running the create authorization model action")
-    jimm_unit = await utils.get_unit_by_name(APP_NAME, "0", ops_test.model.units)
-    with open("authorisation_model.json", "r") as model_file:
-        model_data = model_file.read()
-        for i in range(10):
-            action: Action = await jimm_unit.run_action(
-                "create-authorization-model",
-                model=model_data,
-            )
-            result = await action.wait()
-            logger.info("attempt {} -> action result {} {}".format(i, result.status, result.results))
-            if result.results.get("return-code") == 0:
-                break
-            time.sleep(2)
 
     await ops_test.model.wait_for_idle(timeout=2000)
     jimm_debug_info = requests.get(os.path.join(jimm_address.geturl(), "debug/info"))

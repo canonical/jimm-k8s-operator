@@ -2,6 +2,7 @@
 # This file is part of the JIMM k8s Charm for Juju.
 # Copyright 2024 Canonical Ltd.
 
+import hashlib
 import json
 import logging
 import secrets
@@ -37,7 +38,8 @@ from charms.traefik_k8s.v1.ingress import (
     IngressPerAppRevokedEvent,
 )
 from charms.vault_k8s.v0 import vault_kv
-from ops.charm import ActionEvent, CharmBase, InstallEvent, RelationJoinedEvent
+from ops import pebble
+from ops.charm import CharmBase, InstallEvent, RelationJoinedEvent
 from ops.main import main
 from ops.model import (
     ActiveStatus,
@@ -58,7 +60,7 @@ REQUIRED_SETTINGS = {
     "JIMM_UUID": "missing uuid configuration",
     "JIMM_DSN": "missing postgresql relation",
     "OPENFGA_STORE": "missing openfga relation",
-    "OPENFGA_AUTH_MODEL": "run create-authorization-model action",
+    "OPENFGA_AUTH_MODEL": "waiting for OpenFGA auth model creation",
     "OPENFGA_HOST": "missing openfga relation",
     "OPENFGA_SCHEME": "missing openfga relation",
     "OPENFGA_TOKEN": "missing openfga relation",
@@ -194,12 +196,6 @@ class JimmOperatorCharm(CharmBase):
             refresh_event=self.on.config_changed,
         )
 
-        # create-authorization-model action
-        self.framework.observe(
-            self.on.create_authorization_model_action,
-            self._on_create_authorization_model_action,
-        )
-
         self.trusted_cert_transfer = CertificateTransferRequires(self, "receive-ca-cert")
         self.framework.observe(
             self.trusted_cert_transfer.on.certificate_available,
@@ -284,6 +280,8 @@ class JimmOperatorCharm(CharmBase):
             logger.warning("OAuth relation is not ready yet")
             self.unit.status = BlockedStatus("Waiting for OAuth relation")
             return
+
+        self.setup_fga_auth_model(container)
 
         dns_name = self._get_dns_name(event)
         if not dns_name:
@@ -619,12 +617,40 @@ class JimmOperatorCharm(CharmBase):
 
         self._update_workload(event)
 
-    @requires_state_setter
-    def _on_create_authorization_model_action(self, event: ActionEvent) -> None:
-        model = event.params["model"]
-        if not model:
-            event.fail("authorization model not specified")
+    @requires_state
+    def setup_fga_auth_model(self, jimm_container: Container) -> None:
+        """Creates the OpenFGA authorisation model using an auth model found inside the OCI image.
+
+        Args:
+            jimm_container (Container): Workload container to connect to.
+
+        Raises:
+            LookupError: Raised when the auth model file is not found in the container.
+            ValueError: Raised when the auth model is empty.
+            ValueError: Raised when the auth model create request fails.
+            ValueError: Raised when the auth model create response does not contain a model ID.
+        """
+        if not self.unit.is_leader:
             return
+
+        model_path = "/root/openfga/authorisation_model.json"
+        try:
+            model = jimm_container.pull(model_path).read()
+        except pebble.PathError:
+            logger.warning("auth model not found at %s", model_path)
+            raise LookupError("Failed to find auth model in JIMM's OCI image")
+
+        if not model:
+            raise ValueError("empty auth model found")
+
+        model_hash = hashlib.new("md5")
+        model_hash.update(model.encode())
+        digest = model_hash.hexdigest()
+
+        if digest == self._state.openfga_auth_model_hash:
+            logger.info("auth model already exists, won't recreate")
+            return
+
         model_json = json.loads(model)
 
         openfga_store_id = self._state.openfga_store_id
@@ -634,7 +660,7 @@ class JimmOperatorCharm(CharmBase):
         openfga_scheme = self._state.openfga_scheme
 
         if not openfga_address or not openfga_port or not openfga_scheme or not openfga_token or not openfga_store_id:
-            event.fail("missing openfga relation")
+            logger.info("openfga is not ready yet, skipping auth model creation")
             return
 
         url = "{}://{}:{}/stores/{}/authorization-models".format(
@@ -656,17 +682,15 @@ class JimmOperatorCharm(CharmBase):
             verify=False,
         )
         if not response.ok:
-            event.fail(
-                "failed to create the authorization model: {}".format(response.text),
-            )
-            return
+            logger.error("failed to create authorisation model - %s", response.text)
+            raise ValueError("failed to create authorisation model")
         data = response.json()
         authorization_model_id = data.get("authorization_model_id", "")
         if not authorization_model_id:
-            event.fail("response does not contain authorization model id: {}".format(response.text))
-            return
+            logger.error("response does not contain authorization model id - %s", response.text)
+            raise ValueError("response does not contain authorization model id")
         self._state.openfga_auth_model_id = authorization_model_id
-        self._update_workload(event)
+        self._state.openfga_auth_model_hash = digest
 
     @property
     def _oauth_client_config(self) -> ClientConfig:
