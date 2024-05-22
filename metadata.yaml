@@ -9,7 +9,7 @@ name: juju-jimm-k8s
 # The following metadata are human-readable and will be published prominently on Charmhub.
 
 # (Recommended)
-display-name: JIMM-K8S
+display-name: JIMM-K8s
 
 # (Required)
 summary: Juju Intelligent Model Manager provides a convient way to manage all of your models!

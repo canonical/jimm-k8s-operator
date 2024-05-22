@@ -6,7 +6,9 @@
 
 ## Description
 
-JIMM is a extension of Juju, an open source orchestration engine, providing additional capabilities to your Juju environments. 
+JIMM is a extension of Juju, an open source orchestration engine, providing additional capabilities to your Juju environments.
+Visit [our documentation](https://canonical-jaas-documentation.readthedocs-hosted.com/en/latest/) to gain a deeper understanding of what JIMM provides.
+
 The JIMM K8s charm is the easiest and the recommended way to deploy JIMM. This charm installs and configures the JIMM server.
 
 JIMM provides a number of useful features on top of Juju including,
@@ -14,7 +16,7 @@ JIMM provides a number of useful features on top of Juju including,
 - The ability to query across multiple Juju controllers simultaneously.
 - Expanded authentication and authorisation functionality utilising OAuth2.0 and Relationship-based Access Control (ReBAC).
 
-For users who want to deploy JIMM in its entirety (including its dependencies), it is recommended to visit [our documentation](https://canonical-jaas-documentation.readthedocs-hosted.com/en/latest/) for more details.
+For users who want to deploy JIMM in its entirety (including its dependencies), it is recommended to start with [our tutorials](https://canonical-jaas-documentation.readthedocs-hosted.com/en/latest/tutorial) to get acquianted.
 
 ## Usage
 

@@ -1,18 +1,6 @@
 #!/usr/bin/env python3
 # This file is part of the JIMM k8s Charm for Juju.
-# Copyright 2022 Canonical Ltd.
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License version 3, as
-# published by the Free Software Foundation.
-#
-# This program is distributed in the hope that it will be useful, but
-# WITHOUT ANY WARRANTY; without even the implied warranties of
-# MERCHANTABILITY, SATISFACTORY QUALITY, or FITNESS FOR A PARTICULAR
-# PURPOSE.  See the GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program. If not, see <http://www.gnu.org/licenses/>.
+# Copyright 2024 Canonical Ltd.
 
 import json
 import logging
@@ -221,19 +209,19 @@ class JimmOperatorCharm(CharmBase):
             self._on_trusted_certificate_removed,  # pyright: ignore
         )
 
-    def _on_peer_relation_changed(self, event):
+    def _on_peer_relation_changed(self, event) -> None:
         self._update_workload(event)
 
-    def _on_jimm_pebble_ready(self, event):
+    def _on_jimm_pebble_ready(self, event) -> None:
         self._update_workload(event)
 
-    def _on_config_changed(self, event):
+    def _on_config_changed(self, event) -> None:
         self._update_workload(event)
 
-    def _on_oauth_info_changed(self, event: OAuthInfoChangedEvent):
+    def _on_oauth_info_changed(self, event: OAuthInfoChangedEvent) -> None:
         self._update_workload(event)
 
-    def _on_install(self, event: InstallEvent):
+    def _on_install(self, event: InstallEvent) -> None:
         self.unit.add_secret(
             {"nonce": secrets.token_hex(16)},
             label=VAULT_NONCE_SECRET_LABEL,
@@ -241,25 +229,28 @@ class JimmOperatorCharm(CharmBase):
         )
 
     @requires_state_setter
-    def _on_leader_elected(self, event):
+    def _on_leader_elected(self, event) -> None:
         if not self._state.private_key:
             private_key: bytes = generate_private_key(key_size=4096)
             self._state.private_key = private_key.decode()
 
         self._update_workload(event)
 
-    def _vault_config(self):
+    def _vault_config(self) -> dict | None:
         try:
             relation = self.model.get_relation("vault")
         except TooManyRelatedAppsError:
+            logger.error("too many vault relations detected")
             raise RuntimeError("More than one relations are defined. Please provide a relation_id")
         if relation is None:
             return None
+
         vault_url = self.vault.get_vault_url(relation)
         ca_certificate = self.vault.get_ca_certificate(relation)
         mount = self.vault.get_mount(relation)
         unit_credentials = self.vault.get_unit_credentials(relation)
         if not unit_credentials:
+            logger.debug("no vault unit credentials")
             return None
 
         # unit_credentials is a juju secret id
@@ -277,7 +268,7 @@ class JimmOperatorCharm(CharmBase):
         }
 
     @requires_state
-    def _update_workload(self, event):
+    def _update_workload(self, event) -> None:
         """Update workload with all available configuration
         data."""
 
@@ -407,7 +398,7 @@ class JimmOperatorCharm(CharmBase):
         """Start JIMM."""
         self._update_workload(event)
 
-    def _on_stop(self, _):
+    def _on_stop(self, _) -> None:
         """Stop JIMM."""
         try:
             container = self.unit.get_container(WORKLOAD_CONTAINER)
@@ -421,7 +412,7 @@ class JimmOperatorCharm(CharmBase):
             logger.info("workload not ready")
             return
 
-    def _on_update_status(self, event):
+    def _on_update_status(self, event) -> None:
         """Update the status of the charm."""
         if self.unit.status.name == ErrorStatus.name:
             # Skip ready check if unit in error to allow for error resolution.
@@ -441,10 +432,10 @@ class JimmOperatorCharm(CharmBase):
                 egress_subnet = str(binding.network.interfaces[0].subnet)
                 self.interface.request_credentials(event.relation, egress_subnet, self.get_vault_nonce())
             except Exception as e:
-                logging.warning(f"failed to update vault relation - {repr(e)}")
+                logger.warning(f"failed to update vault relation - {repr(e)}")
 
     @requires_state_setter
-    def _on_dashboard_relation_joined(self, event: RelationJoinedEvent):
+    def _on_dashboard_relation_joined(self, event: RelationJoinedEvent) -> None:
         dns_name = self._get_dns_name(event)
         if not dns_name:
             return
@@ -461,10 +452,9 @@ class JimmOperatorCharm(CharmBase):
         """Database event handler."""
 
         if event.username is None or event.password is None:
-            event.defer()
             logger.info(
                 "(postgresql) Relation data is not complete (missing `username` or `password` field); "
-                "deferring the event."
+                "returning early. This hook should retriggered later."
             )
             return
 
@@ -508,22 +498,19 @@ class JimmOperatorCharm(CharmBase):
         else:
             raise DeferError
 
-    def _get_network_address(self, event):
-        return str(self.model.get_binding(event.relation).network.egress_subnets[0].network_address)
-
     def _on_vault_connected(self, event: vault_kv.VaultKvConnectedEvent):
         relation = self.model.get_relation(event.relation_name, event.relation_id)
         egress_subnet = str(self.model.get_binding(relation).network.interfaces[0].subnet)
         self.vault.request_credentials(relation, egress_subnet, self.get_vault_nonce())
 
-    def _on_vault_ready(self, event: vault_kv.VaultKvReadyEvent):
+    def _on_vault_ready(self, event: vault_kv.VaultKvReadyEvent) -> None:
         self._update_workload(event)
 
-    def _on_vault_gone_away(self, event: vault_kv.VaultKvGoneAwayEvent):
+    def _on_vault_gone_away(self, event: vault_kv.VaultKvGoneAwayEvent) -> None:
         self._update_workload(event)
 
     @requires_state_setter
-    def _on_openfga_store_created(self, event: OpenFGAStoreCreateEvent):
+    def _on_openfga_store_created(self, event: OpenFGAStoreCreateEvent) -> None:
         if not event.store_id:
             return
 
@@ -542,12 +529,8 @@ class JimmOperatorCharm(CharmBase):
         self._update_workload(event)
 
     @requires_state
-    def _get_dns_name(self, event):
-        default_dns_name = "{}.{}-endpoints.{}.svc.cluster.local".format(
-            self.unit.name.replace("/", "-"),
-            self.app.name,
-            self.model.name,
-        )
+    def _get_dns_name(self, event) -> str:
+        default_dns_name = ""
         dns_name = self.config.get("dns-name", default_dns_name)
         if self._state.dns_name:
             dns_name = self._state.dns_name
@@ -558,6 +541,7 @@ class JimmOperatorCharm(CharmBase):
     def _on_certificates_relation_joined(self, event: RelationJoinedEvent) -> None:
         dns_name = self._get_dns_name(event)
         if not dns_name:
+            logger.warning("missing dns name, won't generate csr")
             return
 
         csr = generate_csr(
@@ -623,19 +607,19 @@ class JimmOperatorCharm(CharmBase):
         self._update_workload(event)
 
     @requires_state_setter
-    def _on_ingress_ready(self, event: IngressPerAppReadyEvent):
+    def _on_ingress_ready(self, event: IngressPerAppReadyEvent) -> None:
         self._state.dns_name = event.url
 
         self._update_workload(event)
 
     @requires_state_setter
-    def _on_ingress_revoked(self, event: IngressPerAppRevokedEvent):
+    def _on_ingress_revoked(self, event: IngressPerAppRevokedEvent) -> None:
         del self._state.dns_name
 
         self._update_workload(event)
 
     @requires_state_setter
-    def _on_create_authorization_model_action(self, event: ActionEvent):
+    def _on_create_authorization_model_action(self, event: ActionEvent) -> None:
         model = event.params["model"]
         if not model:
             event.fail("authorization model not specified")
@@ -695,7 +679,7 @@ class JimmOperatorCharm(CharmBase):
             OAUTH_GRANT_TYPES,
         )
 
-    def get_vault_nonce(self):
+    def get_vault_nonce(self) -> str:
         secret = self.model.get_secret(label=VAULT_NONCE_SECRET_LABEL)
         nonce = secret.get_content()["nonce"]
         return nonce
@@ -736,10 +720,10 @@ class JimmOperatorCharm(CharmBase):
 
         return True
 
-    def _on_trusted_certificate_available(self, event):
+    def _on_trusted_certificate_available(self, event) -> None:
         self._update_workload(event)
 
-    def _on_trusted_certificate_removed(self, event: CertificateRemovedEvent):
+    def _on_trusted_certificate_removed(self, event: CertificateRemovedEvent) -> None:
         # All certificates received from the relation are in separate files marked by the relation id.
         container = self.unit.get_container(WORKLOAD_CONTAINER)
         if not container.can_connect():
@@ -750,7 +734,7 @@ class JimmOperatorCharm(CharmBase):
         self._update_workload(event)
 
 
-def ensureFQDN(dns: str):  # noqa: N802
+def ensureFQDN(dns: str) -> str:  # noqa: N802
     """Ensures a domain name has an https:// prefix."""
     if not dns.startswith("http"):
         dns = "https://" + dns

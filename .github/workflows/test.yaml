@@ -13,7 +13,7 @@ jobs:
 
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,10 +42,10 @@ jobs:
     name: Integration tests
     needs:
       - charm-build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 #v4.1.6
       - name: Setup operator environment
         uses: charmed-kubernetes/actions-operator@main
         with:
@@ -67,7 +67,7 @@ jobs:
           echo "$REGISTRY_CONFIG" | sudo tee -a /var/snap/microk8s/current/args/containerd-template.toml
           sudo snap restart microk8s.daemon-containerd
       # Download the charm from the build to speed up integration tests.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@65a9edc5881444af0b9093a5e628f2fe47ea3b2e # v4.1.7
         with:
           name: jimm-k8s-charm
       - name: Install tox
@@ -76,4 +76,4 @@ jobs:
         run: tox -e integration -- --localCharm
       - name: Dump logs
         if: failure()
-        uses: canonical/charming-actions/dump-logs@main
+        uses: canonical/charming-actions/dump-logs@5433d269fcf33ec1e79912ea8e6abd2ce3d71272 # main

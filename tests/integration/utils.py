@@ -1,5 +1,4 @@
 import asyncio
-import glob
 import logging
 import os
 import time
@@ -27,38 +26,26 @@ async def get_unit_by_name(unit_name: str, unit_index: str, unit_list: Dict[str,
     return unit_list.get("{unitname}/{unitindex}".format(unitname=unit_name, unitindex=unit_index))
 
 
-def get_local_charm():
-    charm = glob.glob("./*.charm")
-    if len(charm) != 1:
-        raise ValueError(f"Found {len(charm)} file(s) with .charm extension.")
-    return charm[0]
-
-
 class JimmEnv:
     def __init__(self, jimm_address: ParseResult, idp_manager: ExternalIdpManager) -> None:
         self.jimm_address = jimm_address
         self.idp_manager = idp_manager
 
 
-async def deploy_jimm(ops_test: OpsTest, local_charm: bool) -> JimmEnv:
+async def deploy_jimm(ops_test: OpsTest, charm: Path) -> JimmEnv:
     """(Optionally) Build and then deploy JIMM and all dependencies.
 
     Args:
         ops_test (OpsTest): Fixture for testing operator charms
-        local_charm (bool): Flag to indicate whether to build the charm under test.
+        charm (Path): Path to prebuilt charm
 
     Returns:
         JimmEnv: A class with member variables that are useful for test functions.
     """
     # Build and deploy charm from local source folder
     # (Optionally build) and deploy charm from local source folder
-    if local_charm:
-        charm = Path(utils.get_local_charm()).resolve()
-    else:
-        charm = await ops_test.build_charm(".")
     jimm_image_path = METADATA["resources"]["jimm-image"]["upstream-source"]
     resources = {"jimm-image": jimm_image_path}
-
     jimm_address = ParseResult(scheme="http", netloc="test.jimm.localhost", path="", params="", query="", fragment="")
     # Instantiating the ExternalIdpManager object deploys the external identity provider.
     external_idp_manager = ExternalIdpManager(ops_test=ops_test)
@@ -108,19 +95,19 @@ async def deploy_jimm(ops_test: OpsTest, local_charm: bool) -> JimmEnv:
     )
 
     logger.info("adding custom ca cert relation")
-    await ops_test.model.relate("{}:receive-ca-cert".format(APP_NAME), APPS.SELF_SIGNED_CERTIFICATES)
+    await ops_test.model.integrate("{}:receive-ca-cert".format(APP_NAME), APPS.SELF_SIGNED_CERTIFICATES)
 
     logger.info("adding ingress relation")
-    await ops_test.model.relate("{}:nginx-route".format(APP_NAME), "jimm-ingress")
+    await ops_test.model.integrate("{}:nginx-route".format(APP_NAME), "jimm-ingress")
 
     logger.info("adding openfga postgresql relation")
-    await ops_test.model.relate("openfga:database", "jimm-db:database")
+    await ops_test.model.integrate("openfga:database", "jimm-db:database")
 
     logger.info("adding openfga relation")
-    await ops_test.model.relate(APP_NAME, "openfga")
+    await ops_test.model.integrate(APP_NAME, "openfga")
 
     logger.info("adding postgresql relation")
-    await ops_test.model.relate(APP_NAME, "jimm-db:database")
+    await ops_test.model.integrate(APP_NAME, "jimm-db:database")
 
     logger.info("adding ouath relation")
     await ops_test.model.integrate(f"{APP_NAME}:oauth", APPS.HYDRA)

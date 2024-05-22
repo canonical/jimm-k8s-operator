@@ -32,14 +32,14 @@ logger = logging.getLogger(__name__)
         CHANNEL="0.2/edge",
     ),
 )
-async def test_jimm_oauth_browser_login(ops_test: OpsTest, local_charm, page: Page, context: BrowserContext):
+async def test_jimm_oauth_browser_login(ops_test: OpsTest, charm, page: Page, context: BrowserContext):
     """Build the charm-under-test and deploy it together with related charms.
 
     Run a playwright test to perform the browser login flow and confirm the session cookie is valid.
     """
     # Build and deploy charm from local source folder
     # (Optionally build) and deploy charm from local source folder
-    jimm_env = await deploy_jimm(ops_test, local_charm)
+    jimm_env = await deploy_jimm(ops_test, charm)
     logger.info("running browser flow login test")
     logger.info(f"jimm's address is {jimm_env.jimm_address.geturl()}")
     jimm_login_page = os.path.join(jimm_env.jimm_address.geturl(), "auth/login")
