@@ -63,7 +63,6 @@ async def deploy_jimm(ops_test: OpsTest, charm: Path) -> JimmEnv:
                 charm,
                 resources=resources,
                 application_name=APP_NAME,
-                series="focal",
                 config={
                     "uuid": "f4dec11e-e2b6-40bb-871a-cc38e958af49",
                     "dns-name": jimm_address.netloc,
