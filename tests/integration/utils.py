@@ -66,10 +66,13 @@ async def deploy_jimm(ops_test: OpsTest, charm: Path) -> JimmEnv:
                 config={
                     "uuid": "f4dec11e-e2b6-40bb-871a-cc38e958af49",
                     "dns-name": jimm_address.netloc,
-                    "final-redirect-url": os.path.join(jimm_address.geturl(), "debug/info"),
                     "public-key": "izcYsQy3TePp6bLjqOo3IRPFvkQd2IKtyODGqC6SdFk=",
                     "private-key": "ly/dzsI9Nt/4JxUILQeAX79qZ4mygDiuYGqc2ZEiDEc=",
                     "postgres-secret-storage": True,
+                    # This is used by JIMM as the final redirect URL after doing the browser auth flow.
+                    # Since we don't deploy the dashboard for integration tests, we just set this parameter
+                    # to one of HTTP endpoints of JIMM.
+                    "juju-dashboard-location": os.path.join(jimm_address.geturl(), "debug/info"),
                 },
             ),
             ops_test.model.deploy("nginx-ingress-integrator", application_name="jimm-ingress", channel="latest/stable"),
