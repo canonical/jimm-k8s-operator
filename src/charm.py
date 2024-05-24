@@ -314,7 +314,7 @@ class JimmOperatorCharm(CharmBase):
             "JIMM_OAUTH_CLIENT_ID": oauth_provider_info.client_id,
             "JIMM_OAUTH_CLIENT_SECRET": oauth_provider_info.client_secret,
             "JIMM_OAUTH_SCOPES": OAUTH_SCOPES,
-            "JIMM_DASHBOARD_FINAL_REDIRECT_URL": self.config.get("final-redirect-url"),
+            "JIMM_DASHBOARD_FINAL_REDIRECT_URL": self.config.get("juju-dashboard-location"),
             "JIMM_SECURE_SESSION_COOKIES": self.config.get("secure-session-cookies"),
             "JIMM_SESSION_COOKIE_MAX_AGE": self.config.get("session-cookie-max-age"),
         }
