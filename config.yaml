@@ -17,12 +17,6 @@ options:
   dns-name:
     type: string
     description: DNS hostname that JIMM is being served from.
-  final-redirect-url:
-    type: string
-    default: ""
-    description: |
-      The final redirect URL for JIMM to redirect to when completing a browser based
-      login. This should be your dashboard.
   juju-dashboard-location:
     type: string
     default: https://jaas.ai/models
