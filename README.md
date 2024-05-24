@@ -16,7 +16,7 @@ JIMM provides a number of useful features on top of Juju including,
 - The ability to query across multiple Juju controllers simultaneously.
 - Expanded authentication and authorisation functionality utilising OAuth2.0 and Relationship-based Access Control (ReBAC).
 
-For users who want to deploy JIMM in its entirety (including its dependencies), it is recommended to start with [our tutorials](https://canonical-jaas-documentation.readthedocs-hosted.com/en/latest/tutorial) to get acquianted.
+For users who want to deploy JIMM in its entirety (including its dependencies), it is recommended to start with [our tutorials](https://canonical-jaas-documentation.readthedocs-hosted.com/en/latest/tutorial) to get acquainted.
 
 ## Usage
 
