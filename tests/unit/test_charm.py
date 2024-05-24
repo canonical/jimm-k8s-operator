@@ -294,6 +294,27 @@ class TestCharm(TestCase):
         expected_env.update({"INSECURE_SECRET_STORAGE": "enabled"})
         self.assertEqual(plan.to_dict(), get_expected_plan(expected_env))
 
+    def test_dashboard_config(self):
+        self.harness.enable_hooks()
+        self.add_vault_relation()
+        self.harness.update_config(
+            {
+                **MINIMAL_CONFIG,
+                "juju-dashboard-location": "https://some.host",
+            }
+        )
+        container = self.harness.model.unit.get_container("jimm")
+        self.harness.charm.on.jimm_pebble_ready.emit(container)
+
+        plan = self.harness.get_container_pebble_plan("jimm")
+        self.assertDictContainsSubset(
+            {
+                "JIMM_DASHBOARD_LOCATION": "https://some.host",
+                "JIMM_DASHBOARD_FINAL_REDIRECT_URL": "https://some.host",
+            },
+            plan.to_dict()["services"]["jimm"]["environment"],
+        )
+
     def test_app_dns_address(self):
         self.harness.update_config(MINIMAL_CONFIG)
         self.harness.update_config({"dns-name": "jimm.com"})
