@@ -38,7 +38,6 @@ MINIMAL_CONFIG = {
     "dns-name": "jimm.localhost",
     "public-key": "izcYsQy3TePp6bLjqOo3IRPFvkQd2IKtyODGqC6SdFk=",
     "private-key": "ly/dzsI9Nt/4JxUILQeAX79qZ4mygDiuYGqc2ZEiDEc=",
-    "final-redirect-url": "some-url",
 }
 
 BASE_ENV = {
@@ -59,7 +58,7 @@ BASE_ENV = {
     "JIMM_OAUTH_CLIENT_ID": OAUTH_CLIENT_ID,
     "JIMM_OAUTH_CLIENT_SECRET": OAUTH_CLIENT_SECRET,
     "JIMM_OAUTH_SCOPES": OAUTH_PROVIDER_INFO["scope"],
-    "JIMM_DASHBOARD_FINAL_REDIRECT_URL": "some-url",
+    "JIMM_DASHBOARD_FINAL_REDIRECT_URL": "https://jaas.ai/models",
     "JIMM_SECURE_SESSION_COOKIES": True,
     "JIMM_SESSION_COOKIE_MAX_AGE": 86400,
 }
