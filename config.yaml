@@ -1,0 +1,78 @@
+# Copyright 2022 Canonical Ltd
+# See LICENSE file for licensing details.
+
+options:
+  audit-log-retention-period-in-days:
+    type: string
+    description: |
+      How long to hold audit logs for in days, i.e., 10 = 10 days.
+      If 0 is set, the logs will never be purged. Logs are purged at 9AM UTC. 
+      Defaults to 0.
+    default: "0"
+  controller-admins:
+    type: string
+    description: |
+      Whitespace separated list of candid users (or groups) that are
+      made controller admins by default.
+  dns-name:
+    type: string
+    description: DNS hostname that JIMM is being served from.
+  final-redirect-url:
+    type: string
+    default: ""
+    description: |
+      The final redirect URL for JIMM to redirect to when completing a browser based
+      login. This should be your dashboard.
+  juju-dashboard-location:
+    type: string
+    default: https://jaas.ai/models
+    description: URL of the Juju Dashboard for this controller.
+  jwt-expiry:
+    type: string
+    description: |
+      Duration for the JWT expiry (defaults to 5 minutes).
+      This is the JWT JIMM sends to a Juju controller to authenticate
+      model related commands. Increase this if long running websocket
+      connections are failing due to authentication errors.
+    default: 5m
+  log-level:
+    type: string
+    description: |
+      Level to out log messages at, one of "debug", "info", "warn",
+      "error", "dpanic", "panic", and "fatal".
+    default: info
+  macaroon-expiry-duration:
+    type: string
+    default: 24h
+    description: Expiry duration for authentication macaroons.
+  postgres-secret-storage:
+    default: false
+    type: boolean
+    description: Enables the use of Postgres for secret storage if Vault is not related.
+  private-key:
+    type: string
+    description: The private part of JIMM's macaroon bakery keypair.
+  public-key:
+    type: string
+    description: The public part of JIMM's macaroon bakery keypair.
+  secure-session-cookies:
+    type: boolean
+    default: true
+    description: |
+      Whether HTTPS must be enabled to set session cookies.
+  session-cookie-max-age:
+    type: int
+    default: 86400
+    description: |
+      The max age for the session cookies in seconds, on subsequent logins, the session instance
+      extended by this amount.
+  session-expiry-duration:
+    type: string
+    default: 6h
+    description: |
+      Expiry duration for JIMM session tokens. These tokens are used
+      by clients and their expiry determines how frequently a user
+      must login.
+  uuid:
+    type: string
+    description: The UUID advertised by the JIMM controller.

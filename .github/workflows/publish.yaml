@@ -1,0 +1,42 @@
+name: Release to v3/edge
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - v3
+
+# Note this workflow requires a Github secret to provide auth against charmhub.
+# This can be generated with the following command (ttl=6 months)
+# charmcraft login --export=secrets.auth --charm=juju-jimm-k8s --permission=package-manage --permission=package-view --ttl=15552000
+
+jobs:
+  charm-tests:
+    uses: ./.github/workflows/test.yaml
+    secrets:
+      IMAGE_PULL_TOKEN: ${{ secrets.IMAGE_PULL_TOKEN }}
+
+  release-charm:
+    name: Release charm
+    needs:
+      - charm-tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 #v4.1.6
+        with:
+          fetch-depth: 0
+          fetch-tags: true 
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.IMAGE_PULL_TOKEN }}
+      - name: Upload charm to charmhub
+        uses: canonical/charming-actions/upload-charm@631c2d944da2bd12430f1f3a954c8fffcf2385cd # 2.4.0
+        with:
+          credentials: "${{ secrets.CHARMHUB_TOKEN }}"
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+          channel: "3/edge"
