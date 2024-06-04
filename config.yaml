@@ -12,8 +12,8 @@ options:
   controller-admins:
     type: string
     description: |
-      Whitespace separated list of candid users (or groups) that are
-      made controller admins by default.
+      Space separated list of email addresses or service accounts
+      that are made controller admins by default.
   dns-name:
     type: string
     description: DNS hostname that JIMM is being served from.
