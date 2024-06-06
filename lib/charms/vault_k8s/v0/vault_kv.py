@@ -116,15 +116,13 @@ juju integrate <vault provider charm> <vault requirer charm>
 
 import json
 import logging
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import ops
 from interface_tester.schema_base import DataBagSchema  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field, Json, ValidationError
-
-logger = logging.getLogger(__name__)
-
 
 # The unique Charmhub library identifier, never change it
 LIBID = "591d6d2fb6a54853b4bb53ef16ef603a"
@@ -134,9 +132,22 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 4
+LIBPATCH = 6
 
 PYDEPS = ["pydantic", "pytest-interface-tester"]
+
+
+class LogAdapter(logging.LoggerAdapter):
+    """Adapter for the logger to prepend a prefix to all log lines."""
+
+    prefix = "vault_kv"
+
+    def process(self, msg, kwargs):
+        """Decides the format for the prepended text."""
+        return f"[{self.prefix}] {msg}", kwargs
+
+
+logger = LogAdapter(logging.getLogger(__name__), {})
 
 
 class VaultKvProviderSchema(BaseModel):
@@ -149,7 +160,12 @@ class VaultKvProviderSchema(BaseModel):
             "respecting the pattern 'charm-<requirer app>-<user provided suffix>'."
         )
     )
-    ca_certificate: str = Field(description="The CA certificate to use when validating the Vault server's certificate.")
+    ca_certificate: str = Field(
+        description="The CA certificate to use when validating the Vault server's certificate."
+    )
+    egress_subnet: str = Field(
+        description="The CIDR allowed by the role."
+    )
     credentials: Json[Mapping[str, str]] = Field(
         description=(
             "Mapping of unit name and credentials for that unit."
@@ -161,14 +177,18 @@ class VaultKvProviderSchema(BaseModel):
 class AppVaultKvRequirerSchema(BaseModel):
     """App schema of the requirer side of the vault-kv interface."""
 
-    mount_suffix: str = Field(description="Suffix to append to the mount name to get the KV mount.")
+    mount_suffix: str = Field(
+        description="Suffix to append to the mount name to get the KV mount."
+    )
 
 
 class UnitVaultKvRequirerSchema(BaseModel):
     """Unit schema of the requirer side of the vault-kv interface."""
 
     egress_subnet: str = Field(description="Egress subnet to use, in CIDR notation.")
-    nonce: str = Field(description="Uniquely identifying value for this unit. `secrets.token_hex(16)` is recommended.")
+    nonce: str = Field(
+        description="Uniquely identifying value for this unit. `secrets.token_hex(16)` is recommended."
+    )
 
 
 class ProviderSchema(DataBagSchema):
@@ -335,7 +355,18 @@ class VaultKvProvides(ops.Object):
 
         relation.data[self.charm.app]["mount"] = mount
 
-    def set_unit_credentials(self, relation: ops.Relation, nonce: str, secret: ops.Secret):
+    def set_egress_subnet(self, relation: ops.Relation, egress_subnet: str):
+        """Set the egress_subnet on the relation."""
+        if not self.charm.unit.is_leader():
+            return
+        relation.data[self.charm.app]["egress_subnet"] = egress_subnet
+
+    def set_unit_credentials(
+        self,
+        relation: ops.Relation,
+        nonce: str,
+        secret: ops.Secret,
+    ):
         """Set the unit credentials on the relation."""
         if not self.charm.unit.is_leader():
             return
@@ -376,7 +407,9 @@ class VaultKvProvides(ops.Object):
         outstanding_requests: List[KVRequest] = []
         kv_requests = self.get_kv_requests(relation_id=relation_id)
         for request in kv_requests:
-            if not self._credentials_issued_for_request(nonce=request.nonce, relation_id=relation_id):
+            if not self._credentials_issued_for_request(
+                nonce=request.nonce, relation_id=relation_id
+            ):
                 outstanding_requests.append(request)
         return outstanding_requests
 
@@ -384,7 +417,11 @@ class VaultKvProvides(ops.Object):
         """Get all KV requests for the relation."""
         kv_requests: List[KVRequest] = []
         relations = (
-            [relation for relation in self.model.relations[self.relation_name] if relation.id == relation_id]
+            [
+                relation
+                for relation in self.model.relations[self.relation_name]
+                if relation.id == relation_id
+            ]
             if relation_id is not None
             else self.model.relations.get(self.relation_name, [])
         )
@@ -503,7 +540,11 @@ class VaultKvRequires(ops.Object):
         self.mount_suffix = mount_suffix
         self.framework.observe(
             self.charm.on[relation_name].relation_joined,
-            self._on_vault_kv_relation_joined,
+            self._handle_relation,
+        )
+        self.framework.observe(
+            self.charm.on.config_changed,
+            self._handle_relation,
         )
         self.framework.observe(
             self.charm.on[relation_name].relation_changed,
@@ -522,17 +563,20 @@ class VaultKvRequires(ops.Object):
         """Set the egress_subnet on the relation."""
         relation.data[self.charm.unit]["egress_subnet"] = egress_subnet
 
-    def _on_vault_kv_relation_joined(self, event: ops.RelationJoinedEvent):
-        """Handle relation joined.
+    def _handle_relation(self, event: ops.EventBase):
+        """Run when a new unit joins the relation or when the address of the unit changes.
 
         Set the secret backend in the application databag if we are the leader.
-        Always update the egress_subnet in the unit databag.
+        Emit the connected event.
         """
+        relation = self.model.get_relation(relation_name=self.relation_name)
+        if not relation:
+            return
         if self.charm.unit.is_leader():
-            event.relation.data[self.charm.app]["mount_suffix"] = self.mount_suffix
+            relation.data[self.charm.app]["mount_suffix"] = self.mount_suffix
         self.on.connected.emit(
-            event.relation.id,
-            event.relation.name,
+            relation.id,
+            relation.name,
         )
 
     def _on_vault_kv_relation_changed(self, event: ops.RelationChangedEvent):

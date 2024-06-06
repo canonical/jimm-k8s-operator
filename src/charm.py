@@ -251,7 +251,7 @@ class JimmOperatorCharm(CharmBase):
 
         # unit_credentials is a juju secret id
         secret = self.model.get_secret(id=unit_credentials)
-        secret_content = secret.get_content()
+        secret_content = secret.get_content(refresh=True)
         role_id = secret_content["role-id"]
         role_secret_id = secret_content["role-secret-id"]
 
@@ -289,6 +289,10 @@ class JimmOperatorCharm(CharmBase):
 
         oauth_provider_info = self.oauth.get_provider_info()
 
+        known_scopes = set(OAUTH_SCOPES.split(" "))
+        oauth_provider_scopes = set(oauth_provider_info.scope.split(" "))
+        scopes = " ".join(sorted(oauth_provider_scopes.intersection(known_scopes)))
+
         config_values = {
             "JIMM_AUDIT_LOG_RETENTION_PERIOD_IN_DAYS": self.config.get("audit-log-retention-period-in-days", ""),
             "JIMM_ADMINS": self.config.get("controller-admins", ""),
@@ -311,7 +315,7 @@ class JimmOperatorCharm(CharmBase):
             "JIMM_OAUTH_ISSUER_URL": oauth_provider_info.issuer_url,
             "JIMM_OAUTH_CLIENT_ID": oauth_provider_info.client_id,
             "JIMM_OAUTH_CLIENT_SECRET": oauth_provider_info.client_secret,
-            "JIMM_OAUTH_SCOPES": OAUTH_SCOPES,
+            "JIMM_OAUTH_SCOPES": scopes,
             "JIMM_DASHBOARD_FINAL_REDIRECT_URL": self.config.get("juju-dashboard-location"),
             "JIMM_SECURE_SESSION_COOKIES": self.config.get("secure-session-cookies"),
             "JIMM_SESSION_COOKIE_MAX_AGE": self.config.get("session-cookie-max-age"),
@@ -428,7 +432,7 @@ class JimmOperatorCharm(CharmBase):
         if binding is not None:
             try:
                 egress_subnet = str(binding.network.interfaces[0].subnet)
-                self.interface.request_credentials(event.relation, egress_subnet, self.get_vault_nonce())
+                self.vault.request_credentials(event.relation, egress_subnet, self.get_vault_nonce())
             except Exception as e:
                 logger.warning(f"failed to update vault relation - {repr(e)}")
 

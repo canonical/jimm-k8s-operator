@@ -249,8 +249,7 @@ class OpenFGARequires(Object):
         databag = event.relation.data[app]
         try:
             data = OpenfgaProviderAppData.load(databag)
-        except pydantic.ValidationError as e:
-            logger.error(e)
+        except pydantic.ValidationError:
             return
 
         self.on.openfga_store_created.emit(store_id=data.store_id)

@@ -81,7 +81,7 @@ async def deploy_jimm(ops_test: OpsTest, charm: Path) -> JimmEnv:
             ops_test.model.deploy(
                 "openfga-k8s",
                 application_name="openfga",
-                channel="latest/stable",
+                channel="2.0/stable",
             ),
         )
 

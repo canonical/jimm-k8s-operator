@@ -21,7 +21,7 @@ OAUTH_PROVIDER_INFO = {
     "introspection_endpoint": "https://example.oidc.com/admin/oauth2/introspect",
     "issuer_url": "https://example.oidc.com",
     "jwks_endpoint": "https://example.oidc.com/.well-known/jwks.json",
-    "scope": "openid profile email offline_access",
+    "scope": "email offline_access openid profile",
     "token_endpoint": "https://example.oidc.com/oauth2/token",
     "userinfo_endpoint": "https://example.oidc.com/userinfo",
 }
