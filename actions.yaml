@@ -1,2 +1,6 @@
 # Copyright 2022 Canonical Ltd
 # See LICENSE file for licensing details.
+
+rotate-session-key:
+  description: Rotates the session key. Warning - Will log out all users and restart jimm.
+  additionalProperties: false

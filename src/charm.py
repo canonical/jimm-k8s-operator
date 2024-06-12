@@ -9,6 +9,7 @@ import os
 import secrets
 import string
 from urllib.parse import urljoin, urlparse
+from base64 import b64encode
 
 import requests
 from charms.certificate_transfer_interface.v0.certificate_transfer import (
@@ -50,6 +51,7 @@ from ops.model import (
     TooManyRelatedAppsError,
     WaitingStatus,
 )
+from ops.charm import ActionEvent
 
 from state import State, requires_state, requires_state_setter
 
@@ -110,6 +112,7 @@ class JimmOperatorCharm(CharmBase):
         self.framework.observe(self.on.leader_elected, self._on_leader_elected)
         self.framework.observe(self.on.start, self._on_start)
         self.framework.observe(self.on.stop, self._on_stop)
+        self.framework.observe(self.on.rotate_session_key_action, self.rotate_session_key)
 
         self.framework.observe(
             self.on.dashboard_relation_joined,
@@ -320,6 +323,7 @@ class JimmOperatorCharm(CharmBase):
             "JIMM_DASHBOARD_FINAL_REDIRECT_URL": self.config.get("juju-dashboard-location"),
             "JIMM_SECURE_SESSION_COOKIES": self.config.get("secure-session-cookies"),
             "JIMM_SESSION_COOKIE_MAX_AGE": self.config.get("session-cookie-max-age"),
+            "JIMM_SESSION_SECRET_KEY": self.get_session_secret_key(),
             "NO_PROXY": os.environ.get("JUJU_CHARM_NO_PROXY"),
             "HTTP_PROXY": os.environ.get("JUJU_CHARM_HTTP_PROXY"),
             "HTTPS_PROXY": os.environ.get("JUJU_CHARM_HTTPS_PROXY"),
@@ -399,6 +403,26 @@ class JimmOperatorCharm(CharmBase):
                     "is_juju": str(False),
                 }
             )
+
+    def get_session_secret_key(self):
+        if self._state.session_secret_key:
+            return self._state.session_secret_key
+        self._state.session_secret_key = b64encode(os.urandom(64)).decode('utf-8')
+        return self._state.session_secret_key
+
+    def rotate_session_key(self, event: ActionEvent):
+        if not self._state.is_ready:
+            event.fail("charm state isn't ready yet")
+            pass
+        del self._state.session_secret_key
+        self.get_session_secret_key()
+        try:
+            self._update_workload(event)
+        except RuntimeError:
+            # This exception will be raised when trying to defer the action event.
+            warning_msg = "updating workload failed, JIMM units weren't restarted, they might not be ready"
+            logger.warning(warning_msg)
+            event.log(warning_msg)
 
     def _on_start(self, event):
         """Start JIMM."""
