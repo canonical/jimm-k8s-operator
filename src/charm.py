@@ -356,7 +356,7 @@ class JimmOperatorCharm(CharmBase):
                 JIMM_SERVICE_NAME: {
                     "override": "replace",
                     "summary": "JAAS Intelligent Model Manager",
-                    "command": "/root/jimmsrv",
+                    "command": "/usr/local/bin/jimmsrv",
                     "startup": "disabled",
                     "environment": config_values,
                 }

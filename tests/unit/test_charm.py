@@ -86,7 +86,7 @@ def get_expected_plan(env):
                 "summary": "JAAS Intelligent Model Manager",
                 "startup": "disabled",
                 "override": "replace",
-                "command": "/root/jimmsrv",
+                "command": "/usr/local/bin/jimmsrv",
                 "environment": env,
             }
         },
