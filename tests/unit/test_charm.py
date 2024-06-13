@@ -11,10 +11,10 @@ import tempfile
 from unittest import TestCase, mock
 
 from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
-from ops.testing import Harness
 from ops.pebble import Plan
+from ops.testing import Harness
 
-from src.charm import WORKLOAD_CONTAINER, JimmOperatorCharm, JIMM_SERVICE_NAME
+from src.charm import JIMM_SERVICE_NAME, WORKLOAD_CONTAINER, JimmOperatorCharm
 
 OAUTH_CLIENT_ID = "jimm_client_id"
 OAUTH_CLIENT_SECRET = "test-secret"

@@ -8,8 +8,8 @@ import logging
 import os
 import secrets
 import string
-from urllib.parse import urljoin, urlparse
 from base64 import b64encode
+from urllib.parse import urljoin, urlparse
 
 import requests
 from charms.certificate_transfer_interface.v0.certificate_transfer import (
@@ -41,7 +41,7 @@ from charms.traefik_k8s.v1.ingress import (
 )
 from charms.vault_k8s.v0 import vault_kv
 from ops import pebble
-from ops.charm import CharmBase, InstallEvent, RelationJoinedEvent
+from ops.charm import ActionEvent, CharmBase, InstallEvent, RelationJoinedEvent
 from ops.main import main
 from ops.model import (
     ActiveStatus,
@@ -51,7 +51,6 @@ from ops.model import (
     TooManyRelatedAppsError,
     WaitingStatus,
 )
-from ops.charm import ActionEvent
 
 from state import State, requires_state, requires_state_setter
 
@@ -112,7 +111,7 @@ class JimmOperatorCharm(CharmBase):
         self.framework.observe(self.on.leader_elected, self._on_leader_elected)
         self.framework.observe(self.on.start, self._on_start)
         self.framework.observe(self.on.stop, self._on_stop)
-        self.framework.observe(self.on.rotate_session_key_action, self.rotate_session_key)
+        self.framework.observe(self.on.rotate_session_key_action, self.rotate_session_secret_key)
 
         self.framework.observe(
             self.on.dashboard_relation_joined,
@@ -407,10 +406,10 @@ class JimmOperatorCharm(CharmBase):
     def get_session_secret_key(self):
         if self._state.session_secret_key:
             return self._state.session_secret_key
-        self._state.session_secret_key = b64encode(os.urandom(64)).decode('utf-8')
+        self._state.session_secret_key = b64encode(os.urandom(64)).decode("utf-8")
         return self._state.session_secret_key
 
-    def rotate_session_key(self, event: ActionEvent):
+    def rotate_session_secret_key(self, event: ActionEvent):
         if not self._state.is_ready:
             event.fail("charm state isn't ready yet")
             pass
