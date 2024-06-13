@@ -51,12 +51,9 @@ requires:
   certificates:
     interface: tls-certificates
     limit: 1
+    optional: true
   vault:
     interface: vault-kv
-    optional: true
-    limit: 1
-  log-proxy:
-    interface: loki_push_api
     optional: true
     limit: 1
   oauth:
@@ -65,10 +62,14 @@ requires:
   receive-ca-cert:
     interface: certificate_transfer
     description: |
-      Receive a CA cert for grafana to trust.
+      Receive a CA cert for jimm to trust.
       This relation can be used with a local CA to obtain the CA cert that was used to sign proxied
       endpoints.
     limit: 1
+    optional: true
+  logging:
+    interface: loki_push_api
+    optional: true
 
 containers:
   jimm:
@@ -80,7 +81,3 @@ resources:
     description: OCI image for JIMM.
     # Update the below to a fixed version of JIMM once a stable release with OIDC is out.
     upstream-source: ghcr.io/canonical/jimm:v3.1.0
-  promtail-bin:
-    type: file
-    description: Promtail binary for logging
-    filename: promtail-linux

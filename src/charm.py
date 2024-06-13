@@ -21,7 +21,7 @@ from charms.data_platform_libs.v0.data_interfaces import (
 )
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.hydra.v0.oauth import ClientConfig, OAuthInfoChangedEvent, OAuthRequirer
-from charms.loki_k8s.v0.loki_push_api import LogProxyConsumer
+from charms.loki_k8s.v1.loki_push_api import LogForwarder
 from charms.nginx_ingress_integrator.v0.nginx_route import require_nginx_route
 from charms.openfga_k8s.v1.openfga import OpenFGARequires, OpenFGAStoreCreateEvent
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
@@ -186,7 +186,7 @@ class JimmOperatorCharm(CharmBase):
         self._grafana_dashboards = GrafanaDashboardProvider(self, relation_name="grafana-dashboard")
 
         # Loki relation
-        self._log_proxy = LogProxyConsumer(self, log_files=[LOG_FILE], relation_name="log-proxy")
+        self._log_forwarder = LogForwarder(self, relation_name="logging")
 
         # Prometheus relation
         self._prometheus_scraping = MetricsEndpointProvider(
