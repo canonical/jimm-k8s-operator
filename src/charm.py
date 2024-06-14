@@ -238,7 +238,7 @@ class JimmOperatorCharm(CharmBase):
             label=VAULT_NONCE_SECRET_LABEL,
             description="Nonce for vault-kv relation",
         )
-        self.create_session_secret_key()
+        self.ensure_session_secret_key()
 
     @requires_state_setter
     def _on_leader_elected(self, event) -> None:
@@ -422,7 +422,7 @@ class JimmOperatorCharm(CharmBase):
                 }
             )
 
-    def create_session_secret_key(self):
+    def ensure_session_secret_key(self):
         if not self.unit.is_leader:
             return
         try:
@@ -437,6 +437,7 @@ class JimmOperatorCharm(CharmBase):
             return
         secret = self.model.get_secret(label=SESSION_KEY_SECRET_LABEL)
         secret.set_content(self.new_session_key())
+        # Force a refresh of the secret content to flush old data.
         secret.get_content(refresh=True)
         try:
             self._update_workload(event)
@@ -454,6 +455,7 @@ class JimmOperatorCharm(CharmBase):
         Fired on all units observing a secret after the owner of a secret has published a new revision.
         We must ensure the secret content is refreshed either here or where we fetch the secret.
         """
+        # Force a refresh of the secret content to flush old data.
         self.model.get_secret(label=SESSION_KEY_SECRET_LABEL).get_content(refresh=True)
         self._update_workload(event)
 
