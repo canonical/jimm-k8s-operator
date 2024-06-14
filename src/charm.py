@@ -41,13 +41,20 @@ from charms.traefik_k8s.v1.ingress import (
 )
 from charms.vault_k8s.v0 import vault_kv
 from ops import pebble
-from ops.charm import ActionEvent, CharmBase, InstallEvent, RelationJoinedEvent
+from ops.charm import (
+    ActionEvent,
+    CharmBase,
+    InstallEvent,
+    RelationJoinedEvent,
+    SecretChangedEvent,
+)
 from ops.main import main
 from ops.model import (
     ActiveStatus,
     BlockedStatus,
     Container,
     ErrorStatus,
+    SecretNotFoundError,
     TooManyRelatedAppsError,
     WaitingStatus,
 )
@@ -84,6 +91,10 @@ OAUTH_GRANT_TYPES = ["authorization_code", "refresh_token", "urn:ietf:params:oau
 VAULT_NONCE_SECRET_LABEL = "nonce"
 # Template for storing trusted certificate in a file.
 TRUSTED_CA_TEMPLATE = string.Template("/usr/local/share/ca-certificates/trusted-ca-cert-$rel_id-ca.crt")
+SESSION_KEY_SECRET_LABEL = "session_key"
+# Keys should be lowercase letters and digits, at least 3 characters long,
+# start with a letter, and not start or end with a hyphen.
+SESSION_KEY_LOOKUP = "sessionkey"
 
 
 class DeferError(Exception):
@@ -111,6 +122,7 @@ class JimmOperatorCharm(CharmBase):
         self.framework.observe(self.on.leader_elected, self._on_leader_elected)
         self.framework.observe(self.on.start, self._on_start)
         self.framework.observe(self.on.stop, self._on_stop)
+        self.framework.observe(self.on.secret_changed, self.on_secret_changed)
         self.framework.observe(self.on.rotate_session_key_action, self.rotate_session_secret_key)
 
         self.framework.observe(
@@ -226,6 +238,7 @@ class JimmOperatorCharm(CharmBase):
             label=VAULT_NONCE_SECRET_LABEL,
             description="Nonce for vault-kv relation",
         )
+        self.create_session_secret_key()
 
     @requires_state_setter
     def _on_leader_elected(self, event) -> None:
@@ -291,10 +304,16 @@ class JimmOperatorCharm(CharmBase):
             return
 
         oauth_provider_info = self.oauth.get_provider_info()
-
         known_scopes = set(OAUTH_SCOPES.split(" "))
         oauth_provider_scopes = set(oauth_provider_info.scope.split(" "))
         scopes = " ".join(sorted(oauth_provider_scopes.intersection(known_scopes)))
+
+        try:
+            session_key = self.model.get_secret(label=SESSION_KEY_SECRET_LABEL).get_content()[SESSION_KEY_LOOKUP]
+        except SecretNotFoundError:
+            logger.warning("session key secret not found, deferring")
+            event.defer()
+            return
 
         config_values = {
             "JIMM_AUDIT_LOG_RETENTION_PERIOD_IN_DAYS": self.config.get("audit-log-retention-period-in-days", ""),
@@ -322,7 +341,7 @@ class JimmOperatorCharm(CharmBase):
             "JIMM_DASHBOARD_FINAL_REDIRECT_URL": self.config.get("juju-dashboard-location"),
             "JIMM_SECURE_SESSION_COOKIES": self.config.get("secure-session-cookies"),
             "JIMM_SESSION_COOKIE_MAX_AGE": self.config.get("session-cookie-max-age"),
-            "JIMM_SESSION_SECRET_KEY": self.get_session_secret_key(),
+            "JIMM_SESSION_SECRET_KEY": session_key,
             "NO_PROXY": os.environ.get("JUJU_CHARM_NO_PROXY"),
             "HTTP_PROXY": os.environ.get("JUJU_CHARM_HTTP_PROXY"),
             "HTTPS_PROXY": os.environ.get("JUJU_CHARM_HTTPS_PROXY"),
@@ -403,18 +422,22 @@ class JimmOperatorCharm(CharmBase):
                 }
             )
 
-    def get_session_secret_key(self):
-        if self._state.session_secret_key:
-            return self._state.session_secret_key
-        self._state.session_secret_key = b64encode(os.urandom(64)).decode("utf-8")
-        return self._state.session_secret_key
+    def create_session_secret_key(self):
+        if not self.unit.is_leader:
+            return
+        try:
+            self.model.get_secret(label=SESSION_KEY_SECRET_LABEL)
+        except SecretNotFoundError:
+            self.app.add_secret(self.new_session_key(), label=SESSION_KEY_SECRET_LABEL)
 
     def rotate_session_secret_key(self, event: ActionEvent):
-        if not self._state.is_ready:
-            event.fail("charm state isn't ready yet")
-            pass
-        del self._state.session_secret_key
-        self.get_session_secret_key()
+        if not self.unit.is_leader:
+            event.log("Cannot update secret from non-leader unit")
+            event.fail("Run this action on the leader unit")
+            return
+        secret = self.model.get_secret(label=SESSION_KEY_SECRET_LABEL)
+        secret.set_content(self.new_session_key())
+        secret.get_content(refresh=True)
         try:
             self._update_workload(event)
         except RuntimeError:
@@ -422,6 +445,17 @@ class JimmOperatorCharm(CharmBase):
             warning_msg = "updating workload failed, JIMM units weren't restarted, they might not be ready"
             logger.warning(warning_msg)
             event.log(warning_msg)
+
+    def new_session_key(self):
+        return {SESSION_KEY_LOOKUP: b64encode(os.urandom(64)).decode("utf-8")}
+
+    def on_secret_changed(self, event: SecretChangedEvent):
+        """
+        Fired on all units observing a secret after the owner of a secret has published a new revision.
+        We must ensure the secret content is refreshed either here or where we fetch the secret.
+        """
+        self.model.get_secret(label=SESSION_KEY_SECRET_LABEL).get_content(refresh=True)
+        self._update_workload(event)
 
     def _on_start(self, event):
         """Start JIMM."""

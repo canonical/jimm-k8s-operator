@@ -205,6 +205,10 @@ class TestCharm(TestCase):
         self.harness.charm._state.openfga_auth_model_hash = "37a6259cc0c1dae299a7866489dff0bd"
         self.harness.charm._state.openfga_auth_model_id = 1
 
+    def ensure_jimm_secrets(self):
+        self.harness.enable_hooks()
+        self.harness.charm.on.install.emit()
+
     def start_minimal_jimm(self):
         self.harness.enable_hooks()
         self.harness.charm._state.dsn = "postgres-dsn"
@@ -309,6 +313,7 @@ class TestCharm(TestCase):
         )
 
     def test_postgres_secret_storage_config(self):
+        self.ensure_jimm_secrets()
         self.create_auth_model_info()
         self.harness.update_config(MINIMAL_CONFIG)
         self.harness.update_config({"postgres-secret-storage": True})
@@ -326,6 +331,7 @@ class TestCharm(TestCase):
         os.environ["JUJU_CHARM_NO_PROXY"] = "no-proxy.canonincal.com"
         os.environ["JUJU_CHARM_HTTP_PROXY"] = "http-proxy.canonincal.com"
         os.environ["JUJU_CHARM_HTTPS_PROXY"] = "https-proxy.canonincal.com"
+        self.ensure_jimm_secrets()
         self.create_auth_model_info()
         self.harness.update_config(MINIMAL_CONFIG)
         self.harness.update_config({"postgres-secret-storage": True})
