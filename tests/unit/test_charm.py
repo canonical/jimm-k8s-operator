@@ -10,11 +10,18 @@ import pathlib
 import tempfile
 from unittest import TestCase, mock
 
+import ops
 from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
 from ops.pebble import Plan
-from ops.testing import Harness
+from ops.testing import ActionFailed, Harness
 
-from src.charm import JIMM_SERVICE_NAME, WORKLOAD_CONTAINER, JimmOperatorCharm
+from src.charm import (
+    JIMM_SERVICE_NAME,
+    SESSION_KEY_LOOKUP,
+    WORKLOAD_CONTAINER,
+    JimmOperatorCharm,
+    new_session_key,
+)
 
 OAUTH_CLIENT_ID = "jimm_client_id"
 OAUTH_CLIENT_SECRET = "test-secret"
@@ -64,6 +71,7 @@ BASE_ENV = {
     "JIMM_DASHBOARD_FINAL_REDIRECT_URL": "https://jaas.ai/models",
     "JIMM_SECURE_SESSION_COOKIES": True,
     "JIMM_SESSION_COOKIE_MAX_AGE": 86400,
+    "JIMM_SESSION_SECRET_KEY": "test-secret",
 }
 
 # The environment may optionally include Vault.
@@ -129,6 +137,11 @@ class TestCharm(TestCase):
         self.harness.add_relation_unit(self.ingress_rel_id, "nginx-ingress/0")
 
         self.add_oauth_relation()
+
+    def use_fake_session_secret(self):
+        patcher = mock.patch("src.charm.new_session_key", return_value={SESSION_KEY_LOOKUP: "test-secret"})
+        self.mock_key = patcher.start()
+        self.addCleanup(patcher.stop)
 
     def add_openfga_relation(self):
         self.openfga_rel_id = self.harness.add_relation("openfga", "openfga")
@@ -219,17 +232,6 @@ class TestCharm(TestCase):
         self.assertEqual(self.harness.charm.unit.status.name, ActiveStatus.name)
         self.assertEqual(self.harness.charm.unit.status.message, "running")
 
-    def assertPlansEqual(self, plan: Plan, want: dict, msg=None):  # noqa: N802
-        ignore_env_keys = ("JIMM_SESSION_SECRET_KEY",)
-        ignored_keys = {}
-        for item in ignore_env_keys:
-            ignored_keys[item] = plan.services[JIMM_SERVICE_NAME].environment[item]
-            del plan.services[JIMM_SERVICE_NAME].environment[item]
-        session_key = ignored_keys.get("JIMM_SESSION_SECRET_KEY")
-        self.assertIsNotNone(session_key, "missing session secret key")
-        self.assertTrue(len(session_key) >= 64, "session secret key too short")
-        self.assertEqual(plan.to_dict(), want, msg)
-
     def test_add_certificates_relation(self):
         self.start_minimal_jimm()
         self.harness.set_leader(True)
@@ -256,6 +258,7 @@ class TestCharm(TestCase):
         self.assertEqual(self.harness.charm._state.chain, ["chain"])
 
     def test_on_pebble_ready(self):
+        self.use_fake_session_secret()
         self.harness.enable_hooks()
         self.create_auth_model_info()
         self.add_vault_relation()
@@ -267,7 +270,7 @@ class TestCharm(TestCase):
 
         # Check the that the plan was updated
         plan = self.harness.get_container_pebble_plan("jimm")
-        self.assertPlansEqual(plan, get_expected_plan(EXPECTED_VAULT_ENV))
+        self.assertEqual(plan.to_dict(), get_expected_plan(EXPECTED_VAULT_ENV))
 
     def test_ready_without_plan(self):
         self.harness.enable_hooks()
@@ -276,6 +279,7 @@ class TestCharm(TestCase):
         self.assertEqual(self.harness.charm.unit.status.message, "Waiting for OAuth relation")
 
     def test_on_config_changed(self):
+        self.use_fake_session_secret()
         self.harness.enable_hooks()
         self.create_auth_model_info()
         self.add_vault_relation()
@@ -290,7 +294,7 @@ class TestCharm(TestCase):
 
         # Check the that the plan was updated
         plan = self.harness.get_container_pebble_plan("jimm")
-        self.assertPlansEqual(plan, get_expected_plan(EXPECTED_VAULT_ENV))
+        self.assertEqual(plan.to_dict(), get_expected_plan(EXPECTED_VAULT_ENV))
 
     def test_stop(self):
         self.start_minimal_jimm()
@@ -313,6 +317,7 @@ class TestCharm(TestCase):
         )
 
     def test_postgres_secret_storage_config(self):
+        self.use_fake_session_secret()
         self.ensure_jimm_secrets()
         self.create_auth_model_info()
         self.harness.update_config(MINIMAL_CONFIG)
@@ -323,7 +328,7 @@ class TestCharm(TestCase):
         plan = self.harness.get_container_pebble_plan("jimm")
         expected_env = BASE_ENV.copy()
         expected_env.update({"INSECURE_SECRET_STORAGE": "enabled"})
-        self.assertPlansEqual(plan, get_expected_plan(expected_env))
+        self.assertEqual(plan.to_dict(), get_expected_plan(expected_env))
 
     def test_proxy_settings(
         self,
@@ -331,6 +336,7 @@ class TestCharm(TestCase):
         os.environ["JUJU_CHARM_NO_PROXY"] = "no-proxy.canonincal.com"
         os.environ["JUJU_CHARM_HTTP_PROXY"] = "http-proxy.canonincal.com"
         os.environ["JUJU_CHARM_HTTPS_PROXY"] = "https-proxy.canonincal.com"
+        self.use_fake_session_secret()
         self.ensure_jimm_secrets()
         self.create_auth_model_info()
         self.harness.update_config(MINIMAL_CONFIG)
@@ -344,7 +350,7 @@ class TestCharm(TestCase):
         expected_env.update({"NO_PROXY": "no-proxy.canonincal.com"})
         expected_env.update({"HTTP_PROXY": "http-proxy.canonincal.com"})
         expected_env.update({"HTTPS_PROXY": "https-proxy.canonincal.com"})
-        self.assertPlansEqual(plan, get_expected_plan(expected_env))
+        self.assertEqual(plan.to_dict(), get_expected_plan(expected_env))
 
         os.environ["JUJU_CHARM_NO_PROXY"] = ""
         os.environ["JUJU_CHARM_HTTP_PROXY"] = ""
@@ -417,6 +423,7 @@ class TestCharm(TestCase):
         self.assertEqual(self.harness.charm.unit.status.message, "Waiting for OAuth relation")
 
     def test_audit_log_retention_config(self):
+        self.use_fake_session_secret()
         self.harness.enable_hooks()
         self.create_auth_model_info()
         self.add_vault_relation()
@@ -432,7 +439,7 @@ class TestCharm(TestCase):
         expected_env.update({"JIMM_AUDIT_LOG_RETENTION_PERIOD_IN_DAYS": "10"})
         # Check the that the plan was updated
         plan = self.harness.get_container_pebble_plan("jimm")
-        self.assertPlansEqual(plan, get_expected_plan(expected_env))
+        self.assertEqual(plan.to_dict(), get_expected_plan(expected_env))
 
     def test_dashboard_relation_joined(self):
         harness = Harness(JimmOperatorCharm)
@@ -462,13 +469,14 @@ class TestCharm(TestCase):
         self.assertEqual(data["is_juju"], "False")
 
     def test_vault_relation_joined(self):
+        self.use_fake_session_secret()
         self.create_auth_model_info()
         self.harness.enable_hooks()
         self.add_vault_relation()
 
         self.harness.update_config(MINIMAL_CONFIG)
         plan = self.harness.get_container_pebble_plan("jimm")
-        self.assertPlansEqual(plan, get_expected_plan(EXPECTED_VAULT_ENV))
+        self.assertEqual(plan.to_dict(), get_expected_plan(EXPECTED_VAULT_ENV))
 
     def test_app_blocked_without_private_key(self):
         self.harness.enable_hooks()
@@ -532,6 +540,10 @@ class TestCharm(TestCase):
             self.assertTrue(found)
         self.assertEqual(self.harness.charm._state.openfga_auth_model_id, None)
 
+    def test_session_secret_length(self):
+        secret_dict = new_session_key()
+        self.assertTrue(len(secret_dict[SESSION_KEY_LOOKUP]) >= 64)
+
     def test_rotate_session_key_action(self):
         self.harness.enable_hooks()
         self.create_auth_model_info()
@@ -542,13 +554,21 @@ class TestCharm(TestCase):
         self.harness.charm.on.jimm_pebble_ready.emit(container)
         # Check the that the plan was updated
         plan = self.harness.get_container_pebble_plan("jimm")
-        # Get the session secret before we assertPlansEqual because that function
-        # will delete the secret from the plan.
         old_session_secret = plan.services[JIMM_SERVICE_NAME].environment["JIMM_SESSION_SECRET_KEY"]
-        self.assertPlansEqual(plan, get_expected_plan(EXPECTED_VAULT_ENV))
         self.harness.run_action("rotate-session-key")
         new_plan = self.harness.get_container_pebble_plan("jimm")
         new_session_secret = new_plan.services[JIMM_SERVICE_NAME].environment["JIMM_SESSION_SECRET_KEY"]
         self.assertTrue(len(old_session_secret) > 0)
         self.assertTrue(len(new_session_secret) > 0)
         self.assertNotEqual(old_session_secret, new_session_secret)
+
+    @mock.patch.object(ops.model.Unit, "is_leader")
+    def test_rotate_session_key_action_non_leader(self, is_leader):
+        is_leader.return_value = False
+        self.harness.enable_hooks()
+        self.create_auth_model_info()
+        self.add_vault_relation()
+        self.harness.update_config(MINIMAL_CONFIG)
+        with self.assertRaises(ActionFailed) as e:
+            self.harness.run_action("rotate-session-key")
+        self.assertEqual(e.exception.message, "Run this action on the leader unit")

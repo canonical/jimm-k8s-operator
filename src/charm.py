@@ -423,20 +423,20 @@ class JimmOperatorCharm(CharmBase):
             )
 
     def ensure_session_secret_key(self):
-        if not self.unit.is_leader:
+        if not self.unit.is_leader():
             return
         try:
             self.model.get_secret(label=SESSION_KEY_SECRET_LABEL)
         except SecretNotFoundError:
-            self.app.add_secret(self.new_session_key(), label=SESSION_KEY_SECRET_LABEL)
+            self.app.add_secret(new_session_key(), label=SESSION_KEY_SECRET_LABEL)
 
     def rotate_session_secret_key(self, event: ActionEvent):
-        if not self.unit.is_leader:
+        if not self.unit.is_leader():
             event.log("Cannot update secret from non-leader unit")
             event.fail("Run this action on the leader unit")
             return
         secret = self.model.get_secret(label=SESSION_KEY_SECRET_LABEL)
-        secret.set_content(self.new_session_key())
+        secret.set_content(new_session_key())
         # Force a refresh of the secret content to flush old data.
         secret.get_content(refresh=True)
         try:
@@ -446,9 +446,6 @@ class JimmOperatorCharm(CharmBase):
             warning_msg = "updating workload failed, JIMM units weren't restarted, they might not be ready"
             logger.warning(warning_msg)
             event.log(warning_msg)
-
-    def new_session_key(self):
-        return {SESSION_KEY_LOOKUP: b64encode(os.urandom(64)).decode("utf-8")}
 
     def on_secret_changed(self, event: SecretChangedEvent):
         """
@@ -696,7 +693,7 @@ class JimmOperatorCharm(CharmBase):
             ValueError: Raised when the auth model create request fails.
             ValueError: Raised when the auth model create response does not contain a model ID.
         """
-        if not self.unit.is_leader:
+        if not self.unit.is_leader():
             return
 
         model_path = "/root/openfga/authorisation_model.json"
@@ -824,6 +821,11 @@ class JimmOperatorCharm(CharmBase):
         cert_path = TRUSTED_CA_TEMPLATE.substitute(rel_id=event.relation_id)
         container.remove_path(cert_path, recursive=True)
         self._update_workload(event)
+
+
+def new_session_key():
+    """Generate a session secret dict which holds a key value pair used for securing session tokens."""
+    return {SESSION_KEY_LOOKUP: b64encode(os.urandom(64)).decode("utf-8")}
 
 
 def ensureFQDN(dns: str) -> str:  # noqa: N802
