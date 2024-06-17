@@ -1,2 +1,8 @@
 # Copyright 2022 Canonical Ltd
 # See LICENSE file for licensing details.
+
+rotate-session-key:
+  description: |
+    Rotates the session key. 
+    This will cause all users to be logged out of their current sessions (browser and CLI) and additionally, restart JIMM.
+  additionalProperties: false
