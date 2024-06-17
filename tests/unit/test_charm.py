@@ -12,7 +12,6 @@ from unittest import TestCase, mock
 
 import ops
 from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
-from ops.pebble import Plan
 from ops.testing import ActionFailed, Harness
 
 from src.charm import (
