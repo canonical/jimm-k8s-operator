@@ -51,11 +51,10 @@ MINIMAL_CONFIG = {
 BASE_ENV = {
     "JIMM_DASHBOARD_LOCATION": "https://jaas.ai/models",
     "JIMM_DNS_NAME": "jimm.localhost",
-    "JIMM_ENABLE_JWKS_ROTATOR": "1",
     "JIMM_LISTEN_ADDR": ":8080",
     "JIMM_LOG_LEVEL": "info",
     "JIMM_UUID": "1234567890",
-    "JIMM_WATCH_CONTROLLERS": "1",
+    "JIMM_IS_LEADER": "True",
     "BAKERY_PRIVATE_KEY": "ly/dzsI9Nt/4JxUILQeAX79qZ4mygDiuYGqc2ZEiDEc=",
     "BAKERY_PUBLIC_KEY": "izcYsQy3TePp6bLjqOo3IRPFvkQd2IKtyODGqC6SdFk=",
     "OPENFGA_AUTH_MODEL": 1,

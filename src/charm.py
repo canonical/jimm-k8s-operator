@@ -331,6 +331,7 @@ class JimmOperatorCharm(CharmBase):
             "OPENFGA_PORT": self._state.openfga_port,
             "BAKERY_PRIVATE_KEY": self.config.get("private-key", ""),
             "BAKERY_PUBLIC_KEY": self.config.get("public-key", ""),
+            "JIMM_IS_LEADER": str(self.unit.is_leader()),
             "JIMM_JWT_EXPIRY": self.config.get("jwt-expiry"),
             "JIMM_MACAROON_EXPIRY_DURATION": self.config.get("macaroon-expiry-duration", "24h"),
             "JIMM_ACCESS_TOKEN_EXPIRY_DURATION": self.config.get("session-expiry-duration"),
@@ -357,10 +358,6 @@ class JimmOperatorCharm(CharmBase):
             return
         elif vault_config and not insecure_secret_store:
             config_values.update(vault_config)
-
-        if self.model.unit.is_leader():
-            config_values["JIMM_WATCH_CONTROLLERS"] = "1"
-            config_values["JIMM_ENABLE_JWKS_ROTATOR"] = "1"
 
         if self.config.get("postgres-secret-storage", False):
             config_values["INSECURE_SECRET_STORAGE"] = "enabled"  # Value doesn't matter, checks env var exists.
