@@ -570,3 +570,21 @@ class TestCharm(TestCase):
         with self.assertRaises(ActionFailed) as e:
             self.harness.run_action("rotate-session-key")
         self.assertEqual(e.exception.message, "Run this action on the leader unit")
+
+    @mock.patch.object(ops.model.Unit, "is_leader")
+    def test_plan_on_non_leader(self, is_leader):
+        self.use_fake_session_secret()
+        # Ensure we are leader in order to create the secret.
+        is_leader.return_value = True
+        self.harness.enable_hooks()
+        self.create_auth_model_info()
+        self.add_vault_relation()
+        self.harness.update_config(MINIMAL_CONFIG)
+        container = self.harness.model.unit.get_container("jimm")
+        # Set is_leader to return false to mimic a non-leader unit.
+        is_leader.return_value = False
+        self.harness.charm.on.jimm_pebble_ready.emit(container)
+        plan = self.harness.get_container_pebble_plan("jimm")
+        expected_plan = get_expected_plan(EXPECTED_VAULT_ENV)
+        del expected_plan["services"][JIMM_SERVICE_NAME]["environment"]["JIMM_IS_LEADER"]
+        self.assertEqual(plan.to_dict(), expected_plan)

@@ -331,7 +331,6 @@ class JimmOperatorCharm(CharmBase):
             "OPENFGA_PORT": self._state.openfga_port,
             "BAKERY_PRIVATE_KEY": self.config.get("private-key", ""),
             "BAKERY_PUBLIC_KEY": self.config.get("public-key", ""),
-            "JIMM_IS_LEADER": str(self.unit.is_leader()),
             "JIMM_JWT_EXPIRY": self.config.get("jwt-expiry"),
             "JIMM_MACAROON_EXPIRY_DURATION": self.config.get("macaroon-expiry-duration", "24h"),
             "JIMM_ACCESS_TOKEN_EXPIRY_DURATION": self.config.get("session-expiry-duration"),
@@ -347,6 +346,9 @@ class JimmOperatorCharm(CharmBase):
             "HTTP_PROXY": os.environ.get("JUJU_CHARM_HTTP_PROXY"),
             "HTTPS_PROXY": os.environ.get("JUJU_CHARM_HTTPS_PROXY"),
         }
+        if self.unit.is_leader():
+            config_values["JIMM_IS_LEADER"] = "True"
+
         if self._state.dsn:
             config_values["JIMM_DSN"] = self._state.dsn
 
