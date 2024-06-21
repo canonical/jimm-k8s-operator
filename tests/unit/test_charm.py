@@ -4,6 +4,7 @@
 # Learn more about testing at: https://juju.is/docs/sdk/testing
 
 
+import copy
 import json
 import os
 import pathlib
@@ -585,6 +586,6 @@ class TestCharm(TestCase):
         is_leader.return_value = False
         self.harness.charm.on.jimm_pebble_ready.emit(container)
         plan = self.harness.get_container_pebble_plan("jimm")
-        expected_plan = get_expected_plan(EXPECTED_VAULT_ENV)
+        expected_plan = copy.deepcopy(get_expected_plan(EXPECTED_VAULT_ENV))
         del expected_plan["services"][JIMM_SERVICE_NAME]["environment"]["JIMM_IS_LEADER"]
         self.assertEqual(plan.to_dict(), expected_plan)
