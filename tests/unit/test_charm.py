@@ -4,6 +4,7 @@
 # Learn more about testing at: https://juju.is/docs/sdk/testing
 
 
+import copy
 import json
 import os
 import pathlib
@@ -51,11 +52,10 @@ MINIMAL_CONFIG = {
 BASE_ENV = {
     "JIMM_DASHBOARD_LOCATION": "https://jaas.ai/models",
     "JIMM_DNS_NAME": "jimm.localhost",
-    "JIMM_ENABLE_JWKS_ROTATOR": "1",
     "JIMM_LISTEN_ADDR": ":8080",
     "JIMM_LOG_LEVEL": "info",
     "JIMM_UUID": "1234567890",
-    "JIMM_WATCH_CONTROLLERS": "1",
+    "JIMM_IS_LEADER": "True",
     "BAKERY_PRIVATE_KEY": "ly/dzsI9Nt/4JxUILQeAX79qZ4mygDiuYGqc2ZEiDEc=",
     "BAKERY_PUBLIC_KEY": "izcYsQy3TePp6bLjqOo3IRPFvkQd2IKtyODGqC6SdFk=",
     "OPENFGA_AUTH_MODEL": 1,
@@ -571,3 +571,21 @@ class TestCharm(TestCase):
         with self.assertRaises(ActionFailed) as e:
             self.harness.run_action("rotate-session-key")
         self.assertEqual(e.exception.message, "Run this action on the leader unit")
+
+    @mock.patch.object(ops.model.Unit, "is_leader")
+    def test_plan_on_non_leader(self, is_leader):
+        self.use_fake_session_secret()
+        # Ensure we are leader in order to create the secret.
+        is_leader.return_value = True
+        self.harness.enable_hooks()
+        self.create_auth_model_info()
+        self.add_vault_relation()
+        self.harness.update_config(MINIMAL_CONFIG)
+        container = self.harness.model.unit.get_container("jimm")
+        # Set is_leader to return false to mimic a non-leader unit.
+        is_leader.return_value = False
+        self.harness.charm.on.jimm_pebble_ready.emit(container)
+        plan = self.harness.get_container_pebble_plan("jimm")
+        expected_plan = copy.deepcopy(get_expected_plan(EXPECTED_VAULT_ENV))
+        del expected_plan["services"][JIMM_SERVICE_NAME]["environment"]["JIMM_IS_LEADER"]
+        self.assertEqual(plan.to_dict(), expected_plan)

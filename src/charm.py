@@ -346,6 +346,9 @@ class JimmOperatorCharm(CharmBase):
             "HTTP_PROXY": os.environ.get("JUJU_CHARM_HTTP_PROXY"),
             "HTTPS_PROXY": os.environ.get("JUJU_CHARM_HTTPS_PROXY"),
         }
+        if self.unit.is_leader():
+            config_values["JIMM_IS_LEADER"] = "True"
+
         if self._state.dsn:
             config_values["JIMM_DSN"] = self._state.dsn
 
@@ -357,10 +360,6 @@ class JimmOperatorCharm(CharmBase):
             return
         elif vault_config and not insecure_secret_store:
             config_values.update(vault_config)
-
-        if self.model.unit.is_leader():
-            config_values["JIMM_WATCH_CONTROLLERS"] = "1"
-            config_values["JIMM_ENABLE_JWKS_ROTATOR"] = "1"
 
         if self.config.get("postgres-secret-storage", False):
             config_values["INSECURE_SECRET_STORAGE"] = "enabled"  # Value doesn't matter, checks env var exists.
