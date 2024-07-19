@@ -51,6 +51,7 @@ from ops.charm import (
 from ops.main import main
 from ops.model import (
     ActiveStatus,
+    Binding,
     BlockedStatus,
     Container,
     ErrorStatus,
@@ -490,7 +491,7 @@ class JimmOperatorCharm(CharmBase):
         binding = self.model.get_binding("vault-kv")
         if binding is not None:
             try:
-                egress_subnet = str(binding.network.interfaces[0].subnet)
+                egress_subnet = self._egress_subnet(binding)
                 self.vault.request_credentials(event.relation, egress_subnet, self.get_vault_nonce())
             except Exception as e:
                 logger.warning(f"failed to update vault relation - {repr(e)}")
@@ -561,7 +562,7 @@ class JimmOperatorCharm(CharmBase):
 
     def _on_vault_connected(self, event: vault_kv.VaultKvConnectedEvent):
         relation = self.model.get_relation(event.relation_name, event.relation_id)
-        egress_subnet = str(self.model.get_binding(relation).network.interfaces[0].subnet)
+        egress_subnet = self._egress_subnet(self.model.get_binding(relation))
         self.vault.request_credentials(relation, egress_subnet, self.get_vault_nonce())
 
     def _on_vault_ready(self, event: vault_kv.VaultKvReadyEvent) -> None:
@@ -820,6 +821,13 @@ class JimmOperatorCharm(CharmBase):
         cert_path = TRUSTED_CA_TEMPLATE.substitute(rel_id=event.relation_id)
         container.remove_path(cert_path, recursive=True)
         self._update_workload(event)
+
+    def _egress_subnet(self, binding: Binding | None) -> str:
+        if self.config.get("egress-subnet"):
+            return self.config.get("egress-subnet")
+        if binding:
+            return str(binding.network.interfaces[0].subnet)
+        raise ValueError("unknown egress ip")
 
 
 def new_session_key():

@@ -17,6 +17,11 @@ options:
   dns-name:
     type: string
     description: DNS hostname that JIMM is being served from.
+  egress-subnet:
+    type: string
+    description: |
+      A subnet used to indicate to related charms what the egress IP
+      of requests will be. Leave empty to use the pod IP.
   juju-dashboard-location:
     type: string
     default: https://jaas.ai/models
