@@ -8,10 +8,10 @@ from urllib.parse import ParseResult
 import requests
 import yaml
 from juju.unit import Unit
-from oauth_tools.conftest import *  # noqa
-from oauth_tools.constants import APPS
-from oauth_tools.dex import ExternalIdpManager
-from oauth_tools.oauth_test_helper import deploy_identity_bundle
+from oauth_tools import (
+    ExternalIdpService,
+    deploy_identity_bundle
+)
 from pytest_operator.plugin import OpsTest
 
 logger = logging.getLogger(__name__)
@@ -24,12 +24,16 @@ async def get_unit_by_name(unit_name: str, unit_index: str, unit_list: Dict[str,
 
 
 class JimmEnv:
-    def __init__(self, jimm_address: ParseResult, idp_manager: ExternalIdpManager) -> None:
+    def __init__(self, jimm_address: ParseResult, idp_manager: ExternalIdpService) -> None:
         self.jimm_address = jimm_address
-        self.idp_manager = idp_manager
 
 
-async def deploy_jimm(ops_test: OpsTest, charm: Path) -> JimmEnv:
+async def deploy_jimm(
+        ops_test: OpsTest,
+        charm: Path,
+        hydra_app_name: str,
+        self_signed_certificates_app_name: str,
+        ext_idp_service: ExternalIdpService) -> JimmEnv:
     """(Optionally) Build and then deploy JIMM and all dependencies.
 
     Args:
@@ -44,13 +48,15 @@ async def deploy_jimm(ops_test: OpsTest, charm: Path) -> JimmEnv:
     jimm_image_path = METADATA["resources"]["jimm-image"]["upstream-source"]
     resources = {"jimm-image": jimm_image_path}
     jimm_address = ParseResult(scheme="http", netloc="test.jimm.localhost", path="", params="", query="", fragment="")
-    # Instantiating the ExternalIdpManager object deploys the external identity provider.
-    external_idp_manager = ExternalIdpManager(ops_test=ops_test)
 
     # Deploy the identity bundle first because it checks everything is in an active state and if we deploy JIMM apps
     # at the same time, then that check will fail.
     logger.info("deploying identity bundle")
-    await deploy_identity_bundle(ops_test=ops_test, external_idp_manager=external_idp_manager)
+    await deploy_identity_bundle(
+        ops_test=ops_test,
+        bundle_channel="0.2/edge",
+        ext_idp_service=ext_idp_service
+    )
 
     # Deploy the charm and wait for active/idle status
     logger.info("deploying charms")
@@ -94,7 +100,7 @@ async def deploy_jimm(ops_test: OpsTest, charm: Path) -> JimmEnv:
     )
 
     logger.info("adding custom ca cert relation")
-    await ops_test.model.integrate("{}:receive-ca-cert".format(APP_NAME), APPS.SELF_SIGNED_CERTIFICATES)
+    await ops_test.model.integrate("{}:receive-ca-cert".format(APP_NAME), self_signed_certificates_app_name)
 
     logger.info("adding ingress relation")
     await ops_test.model.integrate("{}:nginx-route".format(APP_NAME), "jimm-ingress")
@@ -109,10 +115,10 @@ async def deploy_jimm(ops_test: OpsTest, charm: Path) -> JimmEnv:
     await ops_test.model.integrate(APP_NAME, "jimm-db:database")
 
     logger.info("adding oauth relation")
-    await ops_test.model.integrate(f"{APP_NAME}:oauth", APPS.HYDRA)
+    await ops_test.model.integrate(f"{APP_NAME}:oauth", hydra_app_name)
 
     await ops_test.model.wait_for_idle(timeout=2000)
     jimm_debug_info = requests.get(os.path.join(jimm_address.geturl(), "debug/info"))
     assert jimm_debug_info.status_code == 200
     logger.info("jimm info = %s", jimm_debug_info.json())
-    return JimmEnv(jimm_address, external_idp_manager)
+    return JimmEnv(jimm_address)
