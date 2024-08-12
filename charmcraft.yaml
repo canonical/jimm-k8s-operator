@@ -3,16 +3,45 @@
 type: "charm"
 parts:
   charm:
-    charm-python-packages: [setuptools]
+    charm-strict-dependencies: true
     charm-binary-python-packages:
-      - cryptography
-      - jsonschema
-      - PyYAML
+      - annotated-types
       - attrs
-      - importlib-resources
+      - certifi
+      - cffi
+      - charmhelpers
+      - charset-normalizer
+      - click
+      - cosl
+      - cryptography
+      - exceptiongroup
+      - hvac
+      - idna
+      - iniconfig
+      - Jinja2
+      - jsonschema
+      - jsonschema-specifications
+      - MarkupSafe
+      - netaddr
+      - ops
+      - ops-scenario
+      - packaging
+      - pbr
+      - pluggy
+      - pycparser
+      - pydantic
+      - pydantic_core
+      - pytest
+      - pytest-interface-tester
+      - PyYAML
+      - referencing
+      - requests
+      - rpds-py
+      - tomli
+      - typer
+      - typing_extensions
       - urllib3
-      - zipp
-      - pydantic-core
+      - websocket-client
 bases:
   # This run-on is not as strict as the machine charm
   # as the jimm-server runs in a container.
@@ -21,6 +50,10 @@ bases:
   - build-on:
       - name: "ubuntu"
         channel: "22.04"
+        architectures:
+        - amd64
     run-on:
       - name: "ubuntu"
         channel: "22.04"
+        architectures:
+        - amd64
