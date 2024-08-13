@@ -8,6 +8,7 @@ import os
 import pytest
 import requests
 from oauth_tools import (
+    ExternalIdpService,
     access_application_login_page,
     complete_auth_code_login,
     get_cookie_from_browser_by_name,
@@ -16,7 +17,6 @@ from oauth_tools import (
 from playwright.async_api._generated import BrowserContext, Page
 from pytest_operator.plugin import OpsTest
 from utils import deploy_jimm
-from oauth_tools import ExternalIdpService
 
 pytest_plugins = ["oauth_tools.fixtures"]
 logger = logging.getLogger(__name__)
@@ -39,13 +39,7 @@ async def test_jimm_oauth_browser_login(
     """
     # Build and deploy charm from local source folder
     # (Optionally build) and deploy charm from local source folder
-    jimm_env = await deploy_jimm(
-        ops_test,
-        charm,
-        hydra_app_name,
-        self_signed_certificates_app_name,
-        ext_idp_service
-    )
+    jimm_env = await deploy_jimm(ops_test, charm, hydra_app_name, self_signed_certificates_app_name, ext_idp_service)
     logger.info("running browser flow login test")
     logger.info(f"jimm's address is {jimm_env.jimm_address.geturl()}")
     jimm_login_page = os.path.join(jimm_env.jimm_address.geturl(), "auth/login")

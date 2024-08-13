@@ -8,10 +8,7 @@ from urllib.parse import ParseResult
 import requests
 import yaml
 from juju.unit import Unit
-from oauth_tools import (
-    ExternalIdpService,
-    deploy_identity_bundle
-)
+from oauth_tools import ExternalIdpService, deploy_identity_bundle
 from pytest_operator.plugin import OpsTest
 
 logger = logging.getLogger(__name__)
@@ -29,11 +26,12 @@ class JimmEnv:
 
 
 async def deploy_jimm(
-        ops_test: OpsTest,
-        charm: Path,
-        hydra_app_name: str,
-        self_signed_certificates_app_name: str,
-        ext_idp_service: ExternalIdpService) -> JimmEnv:
+    ops_test: OpsTest,
+    charm: Path,
+    hydra_app_name: str,
+    self_signed_certificates_app_name: str,
+    ext_idp_service: ExternalIdpService,
+) -> JimmEnv:
     """(Optionally) Build and then deploy JIMM and all dependencies.
 
     Args:
@@ -52,11 +50,7 @@ async def deploy_jimm(
     # Deploy the identity bundle first because it checks everything is in an active state and if we deploy JIMM apps
     # at the same time, then that check will fail.
     logger.info("deploying identity bundle")
-    await deploy_identity_bundle(
-        ops_test=ops_test,
-        bundle_channel="0.2/edge",
-        ext_idp_service=ext_idp_service
-    )
+    await deploy_identity_bundle(ops_test=ops_test, bundle_channel="0.2/edge", ext_idp_service=ext_idp_service)
 
     # Deploy the charm and wait for active/idle status
     logger.info("deploying charms")
