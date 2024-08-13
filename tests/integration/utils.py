@@ -21,7 +21,7 @@ async def get_unit_by_name(unit_name: str, unit_index: str, unit_list: Dict[str,
 
 
 class JimmEnv:
-    def __init__(self, jimm_address: ParseResult, idp_manager: ExternalIdpService) -> None:
+    def __init__(self, jimm_address: ParseResult) -> None:
         self.jimm_address = jimm_address
 
 
