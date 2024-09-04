@@ -35,7 +35,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.IMAGE_PULL_TOKEN }}
       - name: Upload charm to charmhub
-        uses: canonical/charming-actions/upload-charm@631c2d944da2bd12430f1f3a954c8fffcf2385cd # 2.4.0
+        uses: canonical/charming-actions/upload-charm@934193396735701141a1decc3613818e412da606 # 2.6.3
         with:
           credentials: "${{ secrets.CHARMHUB_TOKEN }}"
           github-token: "${{ secrets.GITHUB_TOKEN }}"

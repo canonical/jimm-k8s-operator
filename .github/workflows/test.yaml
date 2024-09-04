@@ -76,4 +76,4 @@ jobs:
         run: tox -e integration -- --localCharm
       - name: Dump logs
         if: failure()
-        uses: canonical/charming-actions/dump-logs@5433d269fcf33ec1e79912ea8e6abd2ce3d71272 # main
+        uses: canonical/charming-actions/dump-logs@934193396735701141a1decc3613818e412da606 # main
