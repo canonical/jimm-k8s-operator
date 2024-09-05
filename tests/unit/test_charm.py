@@ -600,3 +600,16 @@ class TestCharm(TestCase):
         res = self.harness.charm._egress_subnet(binding)
         # Perform a regex match that the result is an IP address
         self.assertRegexpMatches(res, r"^([0-9]{1,3}\.){3}[0-9]{1,3}($|/(16|24))$")
+
+    def test_cors_allowed_origins(self):
+        self.use_fake_session_secret()
+        self.create_auth_model_info()
+        self.harness.enable_hooks()
+        self.add_vault_relation()
+
+        self.harness.update_config(MINIMAL_CONFIG)
+        self.harness.update_config({"cors-allowed-origins": "http://test.localhost"})
+        plan = self.harness.get_container_pebble_plan("jimm")
+        expected_env = EXPECTED_VAULT_ENV.copy()
+        expected_env.update({"CORS_ALLOWED_ORIGINS": "http://test.localhost"})
+        self.assertEqual(plan.to_dict(), get_expected_plan(expected_env))

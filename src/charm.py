@@ -317,6 +317,7 @@ class JimmOperatorCharm(CharmBase):
             return
 
         config_values = {
+            "CORS_ALLOWED_ORIGINS": self.config.get("cors-allowed-origins"),
             "JIMM_AUDIT_LOG_RETENTION_PERIOD_IN_DAYS": self.config.get("audit-log-retention-period-in-days", ""),
             "JIMM_ADMINS": self.config.get("controller-admins", ""),
             "JIMM_DNS_NAME": dns_name,
