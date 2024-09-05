@@ -80,5 +80,5 @@ resources:
     type: oci-image
     description: OCI image for JIMM.
     # Update the below to a fixed version of JIMM once a stable release with OIDC is out.
-    upstream-source: ghcr.io/canonical/jimm:v3.1.8
+    upstream-source: ghcr.io/canonical/jimm:v3.1.9
 
