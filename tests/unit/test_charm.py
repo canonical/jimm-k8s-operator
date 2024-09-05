@@ -590,16 +590,13 @@ class TestCharm(TestCase):
         del expected_plan["services"][JIMM_SERVICE_NAME]["environment"]["JIMM_IS_LEADER"]
         self.assertEqual(plan.to_dict(), expected_plan)
 
-    def test_egress_subnet_via_config(self):
-        self.harness.update_config({"egress-subnet": "10.0.0.0/8"})
-        res = self.harness.charm._egress_subnet(None)
-        self.assertEqual(res, "10.0.0.0/8")
-
     def test_egress_subnet_via_binding(self):
         binding = self.harness.charm.model.get_binding("peer")
-        res = self.harness.charm._egress_subnet(binding)
+        subnets = self.harness.charm._egress_subnets(binding)
         # Perform a regex match that the result is an IP address
-        self.assertRegexpMatches(res, r"^([0-9]{1,3}\.){3}[0-9]{1,3}($|/(16|24))$")
+        self.assertGreaterEqual(len(subnets), 1)
+        for subnet in subnets:
+            self.assertRegexpMatches(subnet, r"^([0-9]{1,3}\.){3}[0-9]{1,3}($|/(\d{2}))$")
 
     def test_cors_allowed_origins(self):
         self.use_fake_session_secret()
