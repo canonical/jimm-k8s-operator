@@ -13,8 +13,6 @@ on:
 jobs:
   charm-tests:
     uses: ./.github/workflows/test.yaml
-    secrets:
-      IMAGE_PULL_TOKEN: ${{ secrets.IMAGE_PULL_TOKEN }}
 
   release-charm:
     name: Release charm
@@ -33,7 +31,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.IMAGE_PULL_TOKEN }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload charm to charmhub
         uses: canonical/charming-actions/upload-charm@934193396735701141a1decc3613818e412da606 # 2.6.3
         with:
