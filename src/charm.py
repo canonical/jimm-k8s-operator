@@ -770,7 +770,7 @@ class JimmOperatorCharm(CharmBase):
             redirect_uri=urljoin(dns, "/auth/callback"),
             scope=OAUTH_SCOPES,
             grant_types=OAUTH_GRANT_TYPES,
-            token_endpoint_auth_method="client_secret_post",
+            token_endpoint_auth_method=self.model.config.get("client-authentication-method"),
         )
 
     def get_vault_nonce(self) -> str:

@@ -75,3 +75,7 @@ options:
   uuid:
     type: string
     description: The UUID advertised by the JIMM controller.
+  client-authentication-method:
+    type: string
+    description: The OAuth2 cilent authentication method.
+    default: client_secret_basic
