@@ -5,9 +5,23 @@ on:
   pull_request:
 
 jobs:
-  charm-build:
-    uses: ./.github/workflows/build.yaml
+  build-charm:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 #v4.1.6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
+      - run: sudo snap install charmcraft --channel=2.x/stable --classic
+
+      - run: sudo charmcraft pack --destructive-mode --verbosity=trace
+
+      - uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.4.0
+        with:
+          name: jimm-k8s-charm
+          path: ./*.charm
+          if-no-files-found: error
   lint:
     name: Lint
     runs-on: ubuntu-22.04
@@ -17,10 +31,13 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+
       - name: Install dependencies
         run: python3 -m pip install tox
+
       - name: Run linters
         run: tox -e lint
+
   unit-tests:
     name: Unit tests
     runs-on: ubuntu-latest
@@ -30,19 +47,22 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+
       - name: Install dependencies
         run: python -m pip install tox
+
       - name: Run tests
         run: tox -e unit
 
   integration-tests:
     name: Integration tests
     needs:
-      - charm-build
+      - build-charm
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 #v4.1.6
+
       - name: Setup operator environment
         uses: charmed-kubernetes/actions-operator@main
         with:
@@ -51,6 +71,7 @@ jobs:
           provider: microk8s
           microk8s-group: snap_microk8s
           microk8s-addons: "ingress hostpath-storage dns registry metallb:10.64.140.43/30"
+
       # Instructions from https://microk8s.io/docs/registry-private
       # and https://github.com/containerd/cri/blob/master/docs/registry.md
       # Bash explanation https://stackoverflow.com/questions/15429330/how-to-specify-a-multi-line-shell-variable#comment21828145_15429426
@@ -63,14 +84,18 @@ jobs:
           EOL
           echo "$REGISTRY_CONFIG" | sudo tee -a /var/snap/microk8s/current/args/containerd-template.toml
           sudo snap restart microk8s.daemon-containerd
+      
       # Download the charm from the build to speed up integration tests.
       - uses: actions/download-artifact@65a9edc5881444af0b9093a5e628f2fe47ea3b2e # v4.1.7
         with:
           name: jimm-k8s-charm
+
       - name: Install tox
         run: python -m pip install tox
+
       - name: Integration tests
         run: tox -e integration -- --localCharm
+
       - name: Dump logs
         if: failure()
         uses: canonical/charming-actions/dump-logs@934193396735701141a1decc3613818e412da606 # main
