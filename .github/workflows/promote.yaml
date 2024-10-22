@@ -20,7 +20,7 @@ jobs:
      
       # This action does a few things:
       # - Tags the repo with the latest revision
-      # - Uploads the OCI image resource(s) and attach them to the release
+      # - Uploads the OCI image resource(s) and attaches it/them to the release
       #   If the image already exists in Charmhub, then it will use an existing revision corresponding to that image
       - name: Release charm to channel
         uses: canonical/charming-actions/promote-charm@19db2e9c9da186f64b38b95d8e7e57229f3362da # 2.6.0
