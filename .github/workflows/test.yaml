@@ -42,7 +42,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 #v4.1.6
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Setup operator environment
         uses: charmed-kubernetes/actions-operator@main
         with:
@@ -73,4 +73,4 @@ jobs:
         run: tox -e integration -- --localCharm
       - name: Dump logs
         if: failure()
-        uses: canonical/charming-actions/dump-logs@934193396735701141a1decc3613818e412da606 # main
+        uses: canonical/charming-actions/dump-logs@3952f8f4811d0a92e8bef7ec60a9f27a17b6f422 # main
