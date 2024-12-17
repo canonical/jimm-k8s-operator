@@ -34,7 +34,7 @@ from charms.tls_certificates_interface.v1.tls_certificates import (
     generate_csr,
     generate_private_key,
 )
-from charms.traefik_k8s.v1.ingress import (
+from charms.traefik_k8s.v2.ingress import (
     IngressPerAppReadyEvent,
     IngressPerAppRequirer,
     IngressPerAppRevokedEvent,
@@ -154,6 +154,7 @@ class JimmOperatorCharm(CharmBase):
         self.ingress = IngressPerAppRequirer(
             self,
             relation_name="ingress",
+            strip_prefix=True,
             port=8080,
         )
         self.framework.observe(self.ingress.on.ready, self._on_ingress_ready)
