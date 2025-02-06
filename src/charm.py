@@ -54,6 +54,7 @@ from ops.charm import (
     RelationJoinedEvent,
     SecretChangedEvent,
     UpgradeCharmEvent,
+    RelationChangedEvent
 )
 from ops.main import main
 from ops.model import (
@@ -168,6 +169,7 @@ class JimmOperatorCharm(CharmBase):
         )
 
         self.ingress_ssh = IngressPerUnitRequirer(self, relation_name="ingress-ssh", mode="tcp")
+        self.framework.observe(self.ingress_ssh.on.relation_changed, self._on_ingress_ssh_changed)
         self.framework.observe(self.ingress_ssh.on.ready_for_unit, self._on_ingress_ssh_ready)
         self.framework.observe(self.ingress_ssh.on.revoked_for_unit, self._on_ingress_ssh_revoked)
 
@@ -753,6 +755,10 @@ class JimmOperatorCharm(CharmBase):
 
     def _on_ingress_ssh_revoked(self, _):
         logger.info("I have lost my ingress URL!")
+
+    def _on_ingress_ssh_changed(self, _: RelationChangedEvent):
+        if self.unit.is_leader():
+            self.ingress_ssh.provide_ingress_requirements(port=self.config.get("ssh-port"))
 
     @requires_state_setter
     def _on_ingress_revoked(self, event: IngressPerAppRevokedEvent) -> None:
