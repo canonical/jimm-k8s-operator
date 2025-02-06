@@ -749,7 +749,8 @@ class JimmOperatorCharm(CharmBase):
         self._update_workload(event)
 
     def _on_ingress_ssh_ready(self, event: IngressPerUnitReadyForUnitEvent):
-        logger.info(f"Ingress for ssh at {event.url}")
+        if self.unit.is_leader():
+            self.ingress_ssh.provide_ingress_requirements(port=self.config.get("ssh-port"))
 
     def _on_ingress_ssh_revoked(self, _):
         logger.info("I have lost my ingress URL!")
