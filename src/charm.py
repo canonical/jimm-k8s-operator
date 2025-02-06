@@ -167,7 +167,14 @@ class JimmOperatorCharm(CharmBase):
             port=8080,
         )
 
-        self.ingress_ssh = IngressPerUnitRequirer(self, relation_name="ingress-ssh", mode="tcp")
+        # if the unit is the leader we set the port as well.
+        if self.unit.is_leader():
+            self.ingress_ssh = IngressPerUnitRequirer(
+                self, relation_name="ingress-ssh", mode="tcp", port=self.config.get("ssh-port")
+            )
+        else:
+            self.ingress_ssh = IngressPerUnitRequirer(self, relation_name="ingress-ssh", mode="tcp")
+
         self.framework.observe(self.ingress_ssh.on.ready_for_unit, self._on_ingress_ssh_ready)
         self.framework.observe(self.ingress_ssh.on.revoked_for_unit, self._on_ingress_ssh_revoked)
 
