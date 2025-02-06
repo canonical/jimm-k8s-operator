@@ -171,6 +171,10 @@ class JimmOperatorCharm(CharmBase):
         self.framework.observe(self.ingress_ssh.on.ready_for_unit, self._on_ingress_ssh_ready)
         self.framework.observe(self.ingress_ssh.on.revoked_for_unit, self._on_ingress_ssh_revoked)
 
+        # if the unit is the leader we set up the ingress with the port as well.
+        if self.unit.is_leader():
+            self.ingress_ssh.provide_ingress_requirements(port=self.config.get("ssh-port"))
+
         self.framework.observe(self.ingress.on.ready, self._on_ingress_ready)
         self.framework.observe(
             self.ingress.on.revoked,
