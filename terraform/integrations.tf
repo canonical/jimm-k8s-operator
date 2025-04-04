@@ -19,15 +19,15 @@ data "juju_offer" "vault" {
 }
 
 data "juju_offer" "oauth" {
-  count = var.include_oauth-external-idp-integrator ? 0 : 1
-  url   = var.oauth_offer_url
+  url = var.oauth_offer_url
 }
 
 resource "juju_integration" "jimm_openfga" {
   model = juju_model.jimm.name
 
   application {
-    name = juju_application.jimm.name
+    name     = juju_application.jimm.name
+    endpoint = "openfga"
   }
 
   application {
@@ -39,7 +39,8 @@ resource "juju_integration" "jimm_vault" {
   model = juju_model.jimm.name
 
   application {
-    name = juju_application.jimm.name
+    name     = juju_application.jimm.name
+    endpoint = "vault"
   }
 
   application {
@@ -51,7 +52,8 @@ resource "juju_integration" "jimm_postgresql" {
   model = juju_model.jimm.name
 
   application {
-    name = juju_application.jimm.name
+    name     = juju_application.jimm.name
+    endpoint = "database"
   }
 
   application {
@@ -61,14 +63,26 @@ resource "juju_integration" "jimm_postgresql" {
 
 resource "juju_integration" "jimm_oauth" {
   model = juju_model.jimm.name
-  count = var.include_oauth-external-idp-integrator ? 0 : 1
 
   application {
     name = juju_application.jimm.name
   }
 
   application {
-    offer_url = data.juju_offer.oauth[0].url
+    offer_url = data.juju_offer.oauth.url
+  }
+}
+
+resource "juju_integration" "jimm_ingress" {
+  model = juju_model.jimm.name
+
+  application {
+    name     = juju_application.jimm.name
+    endpoint = "ingress"
+  }
+
+  application {
+    offer_url = data.juju_offer.ingress.url
   }
 }
 

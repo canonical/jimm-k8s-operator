@@ -10,9 +10,10 @@ resource "juju_application" "jimm" {
   units = var.units
 
   charm {
-    name    = var.charm.name
-    channel = var.charm.channel
-    base    = var.charm.base
+    name     = var.jimm_charm.name
+    channel  = var.jimm_charm.channel
+    base     = var.jimm_charm.base
+    revision = var.jimm_charm.revision
   }
 
   config = {
@@ -27,34 +28,6 @@ resource "juju_application" "jimm" {
 
 }
 
-resource "juju_application" "oauth-external-idp-integrator" {
-  name  = var.oauth-external-idp-integrator_application_name
-  count = var.include_oauth-external-idp-integrator ? 1 : 0
-  model = juju_model.jimm.name
-  trust = true
-
-  charm {
-    name     = "oauth-external-idp-integrator"
-    channel  = var.oauth-external-idp-integrator_charm_channel
-    revision = var.oauth-external-idp-integrator_charm_revision
-    base     = var.oauth-external-idp-integrator_charm_base
-  }
-
-  config = {
-    client_id              = var.oauth-external-idp-integrator_config.client_id
-    client_secret          = sensitive(var.oauth-external-idp-integrator_config.client_secret)
-    issuer_url             = var.oauth-external-idp-integrator_config.issuer_url
-    authorization_endpoint = var.oauth-external-idp-integrator_config.authorization_endpoint
-    introspection_endpoint = var.oauth-external-idp-integrator_config.introspection_endpoint
-    jwks_endpoint          = var.oauth-external-idp-integrator_config.jwks_endpoint
-    token_endpoint         = var.oauth-external-idp-integrator_config.token_endpoint
-    userinfo_endpoint      = var.oauth-external-idp-integrator_config.userinfo_endpoint
-    scope                  = var.oauth-external-idp-integrator_config.scope
-  }
-
-  units = 1
-}
-
 ### Misc ###
 
 resource "random_uuid" "jimm-uuid" {
@@ -62,3 +35,14 @@ resource "random_uuid" "jimm-uuid" {
 }
 
 
+resource "juju_application" "grafana_agent" {
+  name  = "grafana-agent"
+  model = juju_model.jimm.name
+
+  charm {
+    name     = var.grafana_agent_charm.name
+    channel  = var.grafana_agent_charm.channel
+    base     = var.grafana_agent_charm.base
+    revision = var.grafana_agent_charm.revision
+  }
+}
