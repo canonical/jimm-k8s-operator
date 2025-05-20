@@ -1,9 +1,10 @@
+# Copyright 2025 Canonical Ltd
+# See LICENSE file for licensing details.
+
 import asyncio
 import logging
-import os
 from pathlib import Path
 from typing import Dict
-from urllib.parse import ParseResult
 
 import requests
 import yaml
@@ -14,15 +15,11 @@ from pytest_operator.plugin import OpsTest
 logger = logging.getLogger(__name__)
 METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
 APP_NAME = "juju-jimm-k8s"
+JIMM_ADDRESS = "http://test.jimm.localhost"
 
 
 async def get_unit_by_name(unit_name: str, unit_index: str, unit_list: Dict[str, Unit]) -> Unit:
     return unit_list.get("{unitname}/{unitindex}".format(unitname=unit_name, unitindex=unit_index))
-
-
-class JimmEnv:
-    def __init__(self, jimm_address: ParseResult) -> None:
-        self.jimm_address = jimm_address
 
 
 async def deploy_jimm(
@@ -31,21 +28,17 @@ async def deploy_jimm(
     hydra_app_name: str,
     self_signed_certificates_app_name: str,
     ext_idp_service: ExternalIdpService,
-) -> JimmEnv:
+) -> None:
     """(Optionally) Build and then deploy JIMM and all dependencies.
 
     Args:
         ops_test (OpsTest): Fixture for testing operator charms
         charm (Path): Path to prebuilt charm
-
-    Returns:
-        JimmEnv: A class with member variables that are useful for test functions.
     """
     # Build and deploy charm from local source folder
     # (Optionally build) and deploy charm from local source folder
     jimm_image_path = METADATA["resources"]["jimm-image"]["upstream-source"]
     resources = {"jimm-image": jimm_image_path}
-    jimm_address = ParseResult(scheme="http", netloc="test.jimm.localhost", path="", params="", query="", fragment="")
 
     # Deploy the identity bundle first because it checks everything is in an active state and if we deploy JIMM apps
     # at the same time, then that check will fail.
@@ -62,14 +55,15 @@ async def deploy_jimm(
                 application_name=APP_NAME,
                 config={
                     "uuid": "f4dec11e-e2b6-40bb-871a-cc38e958af49",
-                    "dns-name": jimm_address.netloc,
+                    "dns-name": "test.jimm.localhost",
                     "public-key": "izcYsQy3TePp6bLjqOo3IRPFvkQd2IKtyODGqC6SdFk=",
                     "private-key": "ly/dzsI9Nt/4JxUILQeAX79qZ4mygDiuYGqc2ZEiDEc=",
                     "postgres-secret-storage": True,
                     # This is used by JIMM as the final redirect URL after doing the browser auth flow.
                     # Since we don't deploy the dashboard for integration tests, we just set this parameter
                     # to one of HTTP endpoints of JIMM.
-                    "juju-dashboard-location": os.path.join(jimm_address.geturl(), "debug/info"),
+                    # "juju-dashboard-location": os.path.join(jimm_address.geturl(), "debug/info"),
+                    "juju-dashboard-location": f"{JIMM_ADDRESS}/debug/info",
                 },
                 num_units=2,
             ),
@@ -109,7 +103,7 @@ async def deploy_jimm(
     await ops_test.model.integrate("openfga:database", "jimm-db:database")
 
     logger.info("adding openfga relation")
-    await ops_test.model.integrate(APP_NAME, "openfga")
+    await ops_test.model.integrate(f"{APP_NAME}:openfga", "openfga")
 
     logger.info("adding postgresql relation")
     await ops_test.model.integrate(APP_NAME, "jimm-db:database")
@@ -121,7 +115,6 @@ async def deploy_jimm(
     await ops_test.model.integrate(f"{APP_NAME}:ingress-ssh", "traefik")
 
     await ops_test.model.wait_for_idle(timeout=2000)
-    jimm_debug_info = requests.get(os.path.join(jimm_address.geturl(), "debug/info"))
+    jimm_debug_info = requests.get(f"{JIMM_ADDRESS}/debug/info")
     assert jimm_debug_info.status_code == 200
     logger.info("jimm info = %s", jimm_debug_info.json())
-    return JimmEnv(jimm_address)
