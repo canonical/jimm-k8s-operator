@@ -2,7 +2,6 @@
 # This file is part of the JIMM k8s Charm for Juju.
 # Copyright 2024 Canonical Ltd.
 
-import hashlib
 import json
 import logging
 import os
@@ -11,7 +10,6 @@ import string
 from base64 import b64encode
 from urllib.parse import urljoin, urlparse
 
-import requests
 from charms.certificate_transfer_interface.v0.certificate_transfer import (
     CertificateRemovedEvent,
     CertificateTransferRequires,
@@ -68,6 +66,7 @@ from ops.model import (
     WaitingStatus,
 )
 
+from openfga_client import OpenFGAClient
 from state import State, requires_state, requires_state_setter
 
 logger = logging.getLogger(__name__)
@@ -335,6 +334,7 @@ class JimmOperatorCharm(CharmBase):
             event.defer()
             return
 
+        # Wait for OAuth relations
         self.oauth.update_client_config(client_config=self._oauth_client_config)
         if not self.oauth.is_client_created():
             logger.warning("OAuth relation is not ready yet")
@@ -342,10 +342,19 @@ class JimmOperatorCharm(CharmBase):
             self._stop()
             return
 
+        # Wait for database relation
         if not self.database.is_resource_created():
             logger.warning("database relation is not ready yet")
             self.unit.status = BlockedStatus("Waiting for database relation")
             return
+
+        # Wait for OpenFGA relations
+        openfga_info = self.openfga.get_store_info()
+        if not openfga_info:
+            logger.warning("OpenFGA relation is not ready yet")
+            self.unit.status = BlockedStatus("Waiting for OpenFGA relation")
+            return
+        openfga_url_details = urlparse(openfga_info.http_api_url)
 
         self.setup_fga_auth_model(container)
 
@@ -355,6 +364,10 @@ class JimmOperatorCharm(CharmBase):
             return
 
         oauth_provider_info = self.oauth.get_provider_info()
+        if not oauth_provider_info:
+            logger.warning("OAuth provider info is not ready yet")
+            self.unit.status = BlockedStatus("Waiting for OAuth provider info")
+            return
         known_scopes = set(OAUTH_SCOPES.split(" "))
         oauth_provider_scopes = set(oauth_provider_info.scope.split(" "))
         scopes = " ".join(sorted(oauth_provider_scopes.intersection(known_scopes)))
@@ -388,12 +401,12 @@ class JimmOperatorCharm(CharmBase):
             "JIMM_UUID": self.config.get("uuid", ""),
             "JIMM_DASHBOARD_LOCATION": self.config.get("juju-dashboard-location", "https://jaas.ai/models"),
             "JIMM_LISTEN_ADDR": ":8080",
-            "OPENFGA_STORE": self._state.openfga_store_id,
+            "OPENFGA_STORE": openfga_info.store_id,
             "OPENFGA_AUTH_MODEL": self._state.openfga_auth_model_id,
-            "OPENFGA_HOST": self._state.openfga_address,
-            "OPENFGA_SCHEME": self._state.openfga_scheme,
-            "OPENFGA_TOKEN": self._state.openfga_token,
-            "OPENFGA_PORT": self._state.openfga_port,
+            "OPENFGA_HOST": openfga_url_details.hostname,
+            "OPENFGA_SCHEME": openfga_url_details.scheme,
+            "OPENFGA_TOKEN": openfga_info.token,
+            "OPENFGA_PORT": openfga_url_details.port,
             "BAKERY_PRIVATE_KEY": self.config.get("private-key", ""),
             "BAKERY_PUBLIC_KEY": self.config.get("public-key", ""),
             "JIMM_DSN": self._make_database_dsn(),
@@ -659,21 +672,6 @@ class JimmOperatorCharm(CharmBase):
 
     @requires_state_setter
     def _on_openfga_store_created(self, event: OpenFGAStoreCreateEvent) -> None:
-        if not event.store_id:
-            return
-
-        info = self.openfga.get_store_info()
-        if not info:
-            logger.warning("openfga info not ready yet")
-            return
-
-        self._state.openfga_store_id = info.store_id
-        self._state.openfga_token = info.token
-        o = urlparse(info.http_api_url)
-        self._state.openfga_address = o.hostname
-        self._state.openfga_port = o.port
-        self._state.openfga_scheme = o.scheme
-
         self._update_workload(event)
 
     @requires_state
@@ -806,69 +804,62 @@ class JimmOperatorCharm(CharmBase):
 
         model_path = "/root/openfga/authorisation_model.json"
         try:
-            model = jimm_container.pull(model_path).read()
+            auth_model = jimm_container.pull(model_path).read()
         except pebble.PathError:
             logger.warning("auth model not found at %s", model_path)
             raise LookupError("Failed to find auth model in JIMM's OCI image")
 
-        if not model:
+        if not auth_model:
             raise ValueError("empty auth model found")
 
-        model_hash = hashlib.new("md5")
-        model_hash.update(model.encode())
-        digest = model_hash.hexdigest()
-
-        if digest == self._state.openfga_auth_model_hash:
-            logger.info("auth model already exists, won't recreate")
+        info = self.openfga.get_store_info()
+        if not info:
+            logger.warning("openfga is not ready yet, skipping auth model creation")
             return
 
-        model_json = json.loads(model)
-
-        openfga_store_id = self._state.openfga_store_id
-        openfga_token = self._state.openfga_token
-        openfga_address = self._state.openfga_address
-        openfga_port = self._state.openfga_port
-        openfga_scheme = self._state.openfga_scheme
-
-        if not openfga_address or not openfga_port or not openfga_scheme or not openfga_token or not openfga_store_id:
-            logger.info("openfga is not ready yet, skipping auth model creation")
+        # Ensure store_id exists before continuing
+        if not info.store_id:
+            logger.warning("openfga store_id not available yet; skipping auth model setup")
             return
 
-        url = "{}://{}:{}/stores/{}/authorization-models".format(
-            openfga_scheme,
-            openfga_address,
-            openfga_port,
-            openfga_store_id,
-        )
-        headers = {"Content-Type": "application/json"}
-        if openfga_token:
-            headers["Authorization"] = "Bearer {}".format(openfga_token)
+        # Use client for OpenFGA interactions
+        client = OpenFGAClient(info.http_api_url, info.store_id, token=info.token, verify=False)
+        local_model = json.loads(auth_model)
 
-        # do the post request
-        logger.info("posting to {}, with headers {}".format(url, headers))
-        response = requests.post(
-            url,
-            json=model_json,
-            headers=headers,
-            verify=False,
-        )
-        if not response.ok:
-            logger.error("failed to create authorisation model - %s", response.text)
-            raise ValueError("failed to create authorisation model")
-        data = response.json()
-        authorization_model_id = data.get("authorization_model_id", "")
+        # If the auth model is already set, compare with remote and skip if unchanged
+        # The auth model has the following structure:
+        # {
+        #   "schema_version": "1.0",
+        #   "type_definitions": [...]
+        # }
+        auth_model_id = self._state.openfga_auth_model_id
+        if auth_model_id:
+            try:
+                remote = client.get_authorization_model(auth_model_id)
+            except ValueError as e:
+                logger.error("failed to fetch existing authorization model: %s", e)
+                logger.warning("skipping auth model creation")
+                return
+            remote_model = remote.get("authorization_model", remote) if remote else None
+            is_same_schema = remote_model and remote_model.get("schema_version") == local_model.get("schema_version")
+            is_same_types = remote_model and remote_model.get("type_definitions") == local_model.get("type_definitions")
+            if is_same_schema and is_same_types:
+                logger.info("OpenFGA authorisation model unchanged; skipping creation")
+                return
+
+        # Create/Update the authorization model
+        authorization_model_id = client.create_authorization_model(local_model)
         if not authorization_model_id:
-            logger.error("response does not contain authorization model id - %s", response.text)
+            logger.error("response does not contain authorization model id")
             raise ValueError("response does not contain authorization model id")
         self._state.openfga_auth_model_id = authorization_model_id
-        self._state.openfga_auth_model_hash = digest
 
     @property
     def _oauth_client_config(self) -> ClientConfig:
         dns = self.config.get("dns-name")
         if dns is None or dns == "":
             dns = "http://localhost"
-        dns = ensureFQDN(dns)
+        dns = ensureFQDN(str(dns))
         return ClientConfig(
             redirect_uri=urljoin(dns, "/auth/callback"),
             scope=OAUTH_SCOPES,
