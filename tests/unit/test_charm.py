@@ -590,7 +590,7 @@ class TestCharm(TestCase):
 
     @mock.patch("src.openfga_client.requests.post")
     @mock.patch("src.openfga_client.requests.get")
-    def test_setup_fga_auth_model_recreated_when_different(self, mock_get, mock_post):
+    def test_setup_fga_auth_model_recreated_when_missing(self, mock_get, mock_post):
         # Prepare the local model file with minimal content
         self.harness.enable_hooks()
         local_model = {"schema_version": "1.1", "type_definitions": []}
@@ -610,9 +610,8 @@ class TestCharm(TestCase):
                 def json(self):
                     return self.json_data
 
-            # Different type definitions should trigger a model update
-            remote_model = {"schema_version": "1.1", "type_definitions": ["foo"]}
-            return MockResponse({"authorization_model": remote_model}, 200)
+            # 404 should trigger a model creation
+            return MockResponse({}, 404)
 
         mock_get.side_effect = mocked_requests_get
 

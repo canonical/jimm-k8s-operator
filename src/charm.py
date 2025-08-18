@@ -826,12 +826,7 @@ class JimmOperatorCharm(CharmBase):
         client = OpenFGAClient(info.http_api_url, info.store_id, token=info.token, verify=False)
         local_model = json.loads(auth_model)
 
-        # If the auth model is already set, compare with remote and skip if unchanged
-        # The auth model has the following structure:
-        # {
-        #   "schema_version": "1.0",
-        #   "type_definitions": [...]
-        # }
+        # If the auth model already exists, we skip creation.
         auth_model_id = self._state.openfga_auth_model_id
         if auth_model_id:
             logger.info("checking existing OpenFGA authorization model")
@@ -841,17 +836,8 @@ class JimmOperatorCharm(CharmBase):
                 logger.error("failed to fetch existing authorization model: %s", e)
                 logger.warning("skipping auth model creation")
                 return
-            if not remote:
-                logger.error("failed to fetch existing authorization model")
-                return
-            remote_model = remote.get("authorization_model")
-            if not remote_model:
-                logger.error("response does not contain authorization model")
-                return
-            is_same_schema = remote_model.get("schema_version") == local_model.get("schema_version")
-            is_same_types = remote_model.get("type_definitions") == local_model.get("type_definitions")
-            if is_same_schema and is_same_types:
-                logger.info("OpenFGA authorisation model unchanged; skipping creation")
+            if remote is not None:
+                logger.info("found OpenFGA authorisation model; skipping creation")
                 return
 
         # Create/Update the authorization model
