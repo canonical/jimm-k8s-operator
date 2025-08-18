@@ -834,21 +834,34 @@ class JimmOperatorCharm(CharmBase):
         # }
         auth_model_id = self._state.openfga_auth_model_id
         if auth_model_id:
+            logger.info("checking existing OpenFGA authorization model")
             try:
                 remote = client.get_authorization_model(auth_model_id)
             except ValueError as e:
                 logger.error("failed to fetch existing authorization model: %s", e)
                 logger.warning("skipping auth model creation")
                 return
-            remote_model = remote.get("authorization_model", remote) if remote else None
-            is_same_schema = remote_model and remote_model.get("schema_version") == local_model.get("schema_version")
-            is_same_types = remote_model and remote_model.get("type_definitions") == local_model.get("type_definitions")
+            if not remote:
+                logger.error("failed to fetch existing authorization model")
+                return
+            remote_model = remote.get("authorization_model")
+            if not remote_model:
+                logger.error("response does not contain authorization model")
+                return
+            is_same_schema = remote_model.get("schema_version") == local_model.get("schema_version")
+            is_same_types = remote_model.get("type_definitions") == local_model.get("type_definitions")
             if is_same_schema and is_same_types:
                 logger.info("OpenFGA authorisation model unchanged; skipping creation")
                 return
 
         # Create/Update the authorization model
-        authorization_model_id = client.create_authorization_model(local_model)
+        logger.info("OpenFGA authorisation model changed; updating")
+        try:
+            authorization_model_id = client.create_authorization_model(local_model)
+        except ValueError as e:
+            logger.warning("failed to create OpenFGA authorisation model: %s", e)
+            logger.warning("skipping auth model creation; will retry on next event")
+            return
         if not authorization_model_id:
             logger.error("response does not contain authorization model id")
             raise ValueError("response does not contain authorization model id")

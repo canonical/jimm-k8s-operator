@@ -37,7 +37,10 @@ class OpenFGAClient:
             ValueError: If the request fails or the response is missing the model ID.
         """
         url = f"{self.base_url}/stores/{self.store_id}/authorization-models"
-        resp = requests.post(url, json=model, headers=self._headers, verify=self.verify)
+        try:
+            resp = requests.post(url, json=model, headers=self._headers, verify=self.verify)
+        except requests.exceptions.RequestException as e:
+            raise ValueError(f"failed to create authorisation model - {e}") from e
         if not resp.ok:
             raise ValueError(f"failed to create authorisation model - {resp.text}")
         data = resp.json()
@@ -59,7 +62,10 @@ class OpenFGAClient:
             ValueError: If the request fails with a non-404 error.
         """
         url = f"{self.base_url}/stores/{self.store_id}/authorization-models/{model_id}"
-        resp = requests.get(url, headers=self._headers, verify=self.verify)
+        try:
+            resp = requests.get(url, headers=self._headers, verify=self.verify)
+        except requests.exceptions.RequestException as e:
+            raise ValueError(f"failed to fetch authorisation model - {e}") from e
         if resp.status_code == 404:
             return None
         if not resp.ok:
