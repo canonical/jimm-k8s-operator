@@ -5,6 +5,7 @@
 
 
 import copy
+import hashlib
 import json
 import os
 import pathlib
@@ -558,13 +559,13 @@ class TestCharm(TestCase):
     def test_setup_fga_auth_model_skipped_when_auth_model_exists(self, mock_get, mock_post):
         # Prepare the local model file with minimal valid content
         self.harness.enable_hooks()
-        local_model = {"schema_version": "1.1", "type_definitions": []}
-        self._write_openfga_model(local_model)
+        auth_model = {"schema_version": "1.1", "type_definitions": []}
+        self._write_openfga_model(auth_model)
 
         # Set an existing model id in state to trigger the comparison path
         self.harness.charm._state.openfga_auth_model_id = "existing-id"
 
-        # Mock GET to return an equivalent remote model (wrapped like OpenFGA)
+        # Mock GET to return an equivalent remote model
         def mocked_requests_get(*args, **kwargs):
             class MockResponse:
                 def __init__(self, json_data, status_code):
@@ -576,9 +577,13 @@ class TestCharm(TestCase):
                     return self.json_data
 
             # Return the remote payload with the same schema and types
-            return MockResponse({"authorization_model": local_model}, 200)
+            return MockResponse(auth_model, 200)
 
         mock_get.side_effect = mocked_requests_get
+
+        # Compute the digest of the remote model and set it on state
+        remote_digest = hashlib.md5(json.dumps(auth_model, sort_keys=True).encode("utf-8")).hexdigest()
+        self.harness.charm._state.openfga_auth_model_digest = remote_digest
 
         self.add_openfga_relation()
         container = self.harness.model.unit.get_container(WORKLOAD_CONTAINER)
@@ -587,6 +592,60 @@ class TestCharm(TestCase):
         mock_post.assert_not_called()
         # Existing id should remain unchanged
         self.assertEqual(self.harness.charm._state.openfga_auth_model_id, "existing-id")
+
+    @mock.patch("src.openfga_client.requests.post")
+    @mock.patch("src.openfga_client.requests.get")
+    def test_setup_fga_auth_model_recreated_when_auth_model_changes(self, mock_get, mock_post):
+        # Prepare the local model file with minimal valid content
+        self.harness.enable_hooks()
+        auth_model = {"schema_version": "1.1", "type_definitions": []}
+        self._write_openfga_model(auth_model)
+
+        # Set an existing model id in state to trigger the comparison path
+        self.harness.charm._state.openfga_auth_model_id = "existing-id"
+
+        # Mock GET to return a remote model
+        def mocked_requests_get(*args, **kwargs):
+            class MockResponse:
+                def __init__(self, json_data, status_code):
+                    self.json_data = json_data
+                    self.status_code = status_code
+                    self.ok = True
+
+                def json(self):
+                    return self.json_data
+
+            # Return the remote payload with the same schema and types
+            return MockResponse(auth_model, 200)
+
+        mock_get.side_effect = mocked_requests_get
+
+        # Mock POST to return a new model id
+        def mocked_requests_post(*args, **kwargs):
+            class MockResponse:
+                def __init__(self, json_data, status_code):
+                    self.json_data = json_data
+                    self.status_code = status_code
+                    self.ok = True
+
+                def json(self):
+                    return self.json_data
+
+            return MockResponse({"authorization_model_id": "new-id"}, 200)
+
+        mock_post.side_effect = mocked_requests_post
+
+        # Set a fake digest that won't match the local model
+        # This simulates a change in the model that requires recreation
+        self.harness.charm._state.openfga_auth_model_digest = "fake-digest"
+
+        self.add_openfga_relation()
+        container = self.harness.model.unit.get_container(WORKLOAD_CONTAINER)
+        self.harness.charm.setup_fga_auth_model(container)
+
+        # Ensure POST was called and the state updated to the new id
+        self.assertTrue(mock_post.called)
+        self.assertEqual(self.harness.charm._state.openfga_auth_model_id, "new-id")
 
     @mock.patch("src.openfga_client.requests.post")
     @mock.patch("src.openfga_client.requests.get")

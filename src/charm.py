@@ -2,6 +2,7 @@
 # This file is part of the JIMM k8s Charm for Juju.
 # Copyright 2024 Canonical Ltd.
 
+import hashlib
 import json
 import logging
 import os
@@ -826,8 +827,9 @@ class JimmOperatorCharm(CharmBase):
         client = OpenFGAClient(info.http_api_url, info.store_id, token=info.token, verify=False)
         local_model = json.loads(auth_model)
 
-        # If the auth model already exists, we skip creation.
+        # First check if the auth model already exists in OpenFGA.
         auth_model_id = self._state.openfga_auth_model_id
+        auth_model_exists = False
         if auth_model_id:
             logger.info("checking existing OpenFGA authorization model")
             try:
@@ -837,8 +839,17 @@ class JimmOperatorCharm(CharmBase):
                 logger.warning("skipping auth model creation")
                 return
             if remote is not None:
-                logger.info("found OpenFGA authorisation model; skipping creation")
-                return
+                logger.info("found OpenFGA authorisation model")
+                auth_model_exists = True
+
+        # Compare auth model from the image with the one in the state
+        # See https://github.com/openfga/openfga/issues/2277 for more info.
+        model_hash = hashlib.new("md5")
+        model_hash.update(auth_model.encode())
+        digest = model_hash.hexdigest()
+        if auth_model_exists and self._state.openfga_auth_model_digest == digest:
+            logger.info("OpenFGA authorisation model already exists and is up to date")
+            return
 
         # Create/Update the authorization model
         logger.info("OpenFGA authorisation model changed; updating")
@@ -852,6 +863,7 @@ class JimmOperatorCharm(CharmBase):
             logger.error("response does not contain authorization model id")
             raise ValueError("response does not contain authorization model id")
         self._state.openfga_auth_model_id = authorization_model_id
+        self._state.openfga_auth_model_digest = digest
 
     @property
     def _oauth_client_config(self) -> ClientConfig:
