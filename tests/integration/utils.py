@@ -43,7 +43,7 @@ async def deploy_jimm(
     # Deploy the identity bundle first because it checks everything is in an active state and if we deploy JIMM apps
     # at the same time, then that check will fail.
     logger.info("deploying identity bundle")
-    await deploy_identity_bundle(ops_test=ops_test, bundle_channel="0.2/edge", ext_idp_service=ext_idp_service)
+    await deploy_identity_bundle(ops_test=ops_test, bundle_channel="latest/edge", ext_idp_service=ext_idp_service)
 
     # Deploy the charm and wait for active/idle status
     logger.info("deploying charms")
