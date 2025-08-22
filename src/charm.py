@@ -106,6 +106,7 @@ HOST_KEY_SECRET_LABEL = "host_key"
 # start with a letter, and not start or end with a hyphen.
 SESSION_KEY_LOOKUP = "sessionkey"
 HOST_KEY_LOOKUP = "hostkey"
+CERTIFICATE_TRANSFER_INTEGRATION_NAME = "receive-ca-cert"
 
 
 class DeferError(Exception):
@@ -243,7 +244,7 @@ class JimmOperatorCharm(CharmBase):
             refresh_event=self.on.config_changed,
         )
 
-        self.trusted_cert_transfer = CertificateTransferRequires(self, "receive-ca-cert")
+        self.trusted_cert_transfer = CertificateTransferRequires(self, CERTIFICATE_TRANSFER_INTEGRATION_NAME)
         self.framework.observe(
             self.trusted_cert_transfer.on.certificate_set_updated,
             self._on_trusted_certificate_available,
@@ -893,12 +894,24 @@ class JimmOperatorCharm(CharmBase):
 
         logger.info("Validating trusted ca certificates.")
 
-        certs = self.trusted_cert_transfer.get_all_certificates()
-        if not certs:
+        ca_certs = self.trusted_cert_transfer.get_all_certificates()
+
+        # deal with v0 relations
+        cert_transfer_integrations = self.trusted_cert_transfer.charm.model.relations[
+            CERTIFICATE_TRANSFER_INTEGRATION_NAME
+        ]
+
+        for integration in cert_transfer_integrations:
+            ca = {integration.data[unit]["ca"] for unit in integration.units if "ca" in integration.data.get(unit, {})}
+            ca_certs.update(ca)
+
+        ca_bundle = "\n".join(ca_certs)
+
+        if not ca_certs:
             logger.info("No trusted CA certificates found, skipping update.")
             return False
 
-        ca_bundle = "\n".join(sorted(certs))
+        ca_bundle = "\n".join(sorted(ca_certs))
 
         try:
             existing_ca_bundle = container.pull(TRUSTED_CA_PATH).read()
