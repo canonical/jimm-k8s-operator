@@ -7,12 +7,13 @@ import json
 import logging
 import os
 import secrets
-import string
 from base64 import b64encode
+from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
-from charms.certificate_transfer_interface.v0.certificate_transfer import (
-    CertificateRemovedEvent,
+from charms.certificate_transfer_interface.v1.certificate_transfer import (
+    CertificatesAvailableEvent,
+    CertificatesRemovedEvent,
     CertificateTransferRequires,
 )
 from charms.data_platform_libs.v0.data_interfaces import (
@@ -61,7 +62,6 @@ from ops.model import (
     Binding,
     BlockedStatus,
     Container,
-    ErrorStatus,
     SecretNotFoundError,
     TooManyRelatedAppsError,
     WaitingStatus,
@@ -99,7 +99,7 @@ OAUTH_SCOPES = "openid profile email offline_access"
 OAUTH_GRANT_TYPES = ["authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code"]
 VAULT_NONCE_SECRET_LABEL = "nonce"
 # Template for storing trusted certificate in a file.
-TRUSTED_CA_TEMPLATE = string.Template("/usr/local/share/ca-certificates/trusted-ca-cert-$rel_id-ca.crt")
+TRUSTED_CA_PATH = Path("/usr/local/share/ca-certificates/trusted-ca-certs.crt")
 SESSION_KEY_SECRET_LABEL = "session_key"
 HOST_KEY_SECRET_LABEL = "host_key"
 # Keys should be lowercase letters and digits, at least 3 characters long,
@@ -245,12 +245,12 @@ class JimmOperatorCharm(CharmBase):
 
         self.trusted_cert_transfer = CertificateTransferRequires(self, "receive-ca-cert")
         self.framework.observe(
-            self.trusted_cert_transfer.on.certificate_available,
-            self._on_trusted_certificate_available,  # pyright: ignore
+            self.trusted_cert_transfer.on.certificate_set_updated,
+            self._on_trusted_certificate_available,
         )
         self.framework.observe(
-            self.trusted_cert_transfer.on.certificate_removed,
-            self._on_trusted_certificate_removed,  # pyright: ignore
+            self.trusted_cert_transfer.on.certificates_removed,
+            self._on_trusted_certificate_removed,
         )
 
     def _on_peer_relation_changed(self, event) -> None:
@@ -563,21 +563,10 @@ class JimmOperatorCharm(CharmBase):
             if container.can_connect() and container.get_service(JIMM_SERVICE_NAME).is_running():
                 container.stop(JIMM_SERVICE_NAME)
         except Exception as e:
-            logger.info("failed to stop the jimm service: {}".format(e))
+            logger.error("failed to stop the jimm service: {}".format(e))
 
     def _on_update_status(self, event) -> None:
         """Update the status of the charm."""
-        if self.unit.status.name == ErrorStatus.name:
-            # Skip ready check if unit in error to allow for error resolution.
-            logger.info("unit in error status, skipping ready check")
-            return
-
-        try:
-            self._ready()
-        except DeferError:
-            logger.info("workload not ready")
-            return
-
         # update vault relation if exists
         binding = self.model.get_binding("vault-kv")
         if binding is not None:
@@ -586,6 +575,8 @@ class JimmOperatorCharm(CharmBase):
                 self.vault.request_credentials(event.relation, egress_subnets, self.get_vault_nonce())
             except Exception as e:
                 logger.warning(f"failed to update vault relation - {repr(e)}")
+
+        self._update_workload(event)
 
     @requires_state_setter
     def _on_dashboard_relation_joined(self, event: RelationJoinedEvent) -> None:
@@ -900,50 +891,36 @@ class JimmOperatorCharm(CharmBase):
         if not self.model.get_relation(relation_name=self.trusted_cert_transfer.relationship_name):
             return False
 
-        logger.info(
-            "Pulling trusted ca certificates from %s relation.",
-            self.trusted_cert_transfer.relationship_name,
-        )
-        certs = []
-        if self.unit.is_leader():
-            for relation in self.model.relations.get(self.trusted_cert_transfer.relationship_name, []):
-                for unit in set(relation.units).difference([self.app, self.unit]):
-                    # Note: this nested loop handles the case of multi-unit CA, each unit providing
-                    # a different ca cert, but that is not currently supported by the lib itself.
-                    cert_path = TRUSTED_CA_TEMPLATE.substitute(rel_id=relation.id)
-                    if cert := relation.data[unit].get("ca"):
-                        certs.append([cert_path, cert])
-            # set certs in peer relation databag, if they are changed
-            if certs:
-                existing_certs_secret = json.loads(self.model.get_relation("peer").data[self.app].get("ca", "[]"))
-                certs_json = json.dumps(certs)
-                if existing_certs_secret != certs_json:
-                    self.model.get_relation("peer").data[self.app]["ca"] = certs_json
-        else:
-            # in non-leader units read data from the relation databag
-            certs = json.loads(self.model.get_relation("peer").data[self.app].get("ca", "[]"))
+        logger.info("Validating trusted ca certificates.")
 
-        # now push certs in the containers
-        for [cert_path, cert] in certs:
-            container.push(cert_path, cert, make_dirs=True)
+        certs = self.trusted_cert_transfer.get_all_certificates()
+        if not certs:
+            logger.info("No trusted CA certificates found, skipping update.")
+            return False
+
+        ca_bundle = "\n".join(sorted(certs))
+
+        try:
+            existing_ca_bundle = container.pull(TRUSTED_CA_PATH).read()
+        except pebble.PathError:
+            existing_ca_bundle = ""
+
+        if existing_ca_bundle == ca_bundle:
+            logger.info("Existing certificates match, no update needed.")
+            return False
+
+        logger.warning("Existing certificates do not match, updating...")
+        container.push(TRUSTED_CA_PATH, ca_bundle, make_dirs=True)
 
         stdout, stderr = container.exec(["update-ca-certificates", "--fresh"]).wait_output()
         logger.info("stdout update-ca-certificates: %s", stdout)
         logger.info("stderr update-ca-certificates: %s", stderr)
-
         return True
 
-    def _on_trusted_certificate_available(self, event) -> None:
+    def _on_trusted_certificate_available(self, event: CertificatesAvailableEvent) -> None:
         self._update_workload(event)
 
-    def _on_trusted_certificate_removed(self, event: CertificateRemovedEvent) -> None:
-        # All certificates received from the relation are in separate files marked by the relation id.
-        container = self.unit.get_container(WORKLOAD_CONTAINER)
-        if not container.can_connect():
-            event.defer()
-            return
-        cert_path = TRUSTED_CA_TEMPLATE.substitute(rel_id=event.relation_id)
-        container.remove_path(cert_path, recursive=True)
+    def _on_trusted_certificate_removed(self, event: CertificatesRemovedEvent) -> None:
         self._update_workload(event)
 
     def _egress_subnets(self, binding: Binding | None) -> list[str]:

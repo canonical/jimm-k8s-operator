@@ -20,6 +20,7 @@ from src.charm import (
     HOST_KEY_LOOKUP,
     JIMM_SERVICE_NAME,
     SESSION_KEY_LOOKUP,
+    TRUSTED_CA_PATH,
     WORKLOAD_CONTAINER,
     JimmOperatorCharm,
     is_valid_private_key,
@@ -231,6 +232,17 @@ class TestCharm(TestCase):
                 "client_id": OAUTH_CLIENT_ID,
                 "client_secret_id": secret_id,
                 **OAUTH_PROVIDER_INFO,
+            },
+        )
+
+    def add_certificate_transfer_relation(self):
+        self.receive_ca_rel_id = self.harness.add_relation("receive-ca-cert", "receive-ca-cert")
+        self.harness.add_relation_unit(self.receive_ca_rel_id, "receive-ca-cert/0")
+        self.harness.update_relation_data(
+            self.receive_ca_rel_id,
+            "receive-ca-cert",
+            {
+                "certificates": json.dumps(["cert1", "cert2"]),
             },
         )
 
@@ -838,3 +850,49 @@ class TestCharm(TestCase):
         )
         self.assertEqual(self.harness.charm.unit.status.message, "Waiting for OAuth relation")
         self.assertEqual(self.harness.charm.unit.status.name, "blocked")
+
+    def test_update_trusted_ca_certs(self):
+        self.start_minimal_jimm()
+
+        self.harness.handle_exec(
+            WORKLOAD_CONTAINER,
+            ["update-ca-certificates"],
+            result=0,
+        )
+        self.add_certificate_transfer_relation()
+
+        plan = self.harness.get_container_pebble_plan("jimm")
+        self.assertEqual(plan.to_dict(), get_expected_plan(EXPECTED_VAULT_ENV))
+
+        # Assert the CA bundle file contains the dummy certs
+        root = self.harness.get_filesystem_root(WORKLOAD_CONTAINER)
+        ca_bundle_path = pathlib.Path(root) / TRUSTED_CA_PATH.relative_to("/")
+        ca_bundle_content = ca_bundle_path.read_text()
+        self.assertIn("cert1", ca_bundle_content)
+        self.assertIn("cert2", ca_bundle_content)
+
+        container = self.harness.model.unit.get_container("jimm")
+        force_restart = self.harness.charm._update_trusted_ca_certs(container)
+        self.assertFalse(force_restart)
+
+    def test_receive_certs_as_non_leader(self):
+        self.start_minimal_jimm()
+        self.harness.set_leader(False)
+        self.harness.handle_exec(
+            WORKLOAD_CONTAINER,
+            ["update-ca-certificates"],
+            result=0,
+        )
+        self.add_certificate_transfer_relation()
+
+        plan = self.harness.get_container_pebble_plan("jimm")
+        expected_env = EXPECTED_VAULT_ENV.copy()
+        del expected_env["JIMM_IS_LEADER"]
+        self.assertEqual(plan.to_dict(), get_expected_plan(expected_env))
+
+        # Assert the CA bundle file contains the dummy certs
+        root = self.harness.get_filesystem_root(WORKLOAD_CONTAINER)
+        ca_bundle_path = pathlib.Path(root) / TRUSTED_CA_PATH.relative_to("/")
+        ca_bundle_content = ca_bundle_path.read_text()
+        self.assertIn("cert1", ca_bundle_content)
+        self.assertIn("cert2", ca_bundle_content)
