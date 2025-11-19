@@ -41,6 +41,26 @@ jobs:
       - charm-build
     runs-on: ubuntu-22.04
     steps:
+      # This action needs a decent amount of disk space for the deployment
+      # and with Github runners we are seeing the Postgres charm report 
+      # <10% free space on pgdata volume. 
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+      - name: Free additional space
+        shell: bash
+        run: |
+          # Remove tools/caches that aren't required for this run.
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"/CodeQL
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"/Ruby
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"/Java_Temurin-Hotspot_jdk
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
       - name: Setup operator environment
