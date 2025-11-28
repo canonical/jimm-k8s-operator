@@ -863,6 +863,11 @@ class JimmOperatorCharm(CharmBase):
         if dns is None or dns == "":
             dns = "http://localhost"
         dns = ensureFQDN(str(dns))
+
+        # enforce final slash to ensure reliable behaviour in urljoin
+        if not dns.endswith("/"):
+            dns = dns + "/"
+
         return ClientConfig(
             redirect_uri=urljoin(dns, "/auth/callback"),
             scope=OAUTH_SCOPES,
