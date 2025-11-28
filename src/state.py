@@ -24,7 +24,8 @@ def requires_state(func):
         if self._state.is_ready():
             return func(self, event)
         else:
-            event.defer()
+            if event is not None:
+                event.defer()
             return
 
     return wrapper

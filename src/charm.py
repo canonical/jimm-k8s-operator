@@ -859,7 +859,7 @@ class JimmOperatorCharm(CharmBase):
 
     @property
     def _oauth_client_config(self) -> ClientConfig:
-        dns = self.config.get("dns-name")
+        dns = self._get_dns_name(None)
         if dns is None or dns == "":
             dns = "http://localhost"
         dns = ensureFQDN(str(dns))
