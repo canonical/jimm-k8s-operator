@@ -68,7 +68,7 @@ async def deploy_jimm(
                 },
                 num_units=2,
             ),
-            ops_test.model.deploy("nginx-ingress-integrator", application_name="jimm-ingress", channel="latest/stable"),
+            ops_test.model.deploy("traefik-k8s", application_name="jimm-ingress", channel="latest/edge", config={"external-hostname": "test.jimm.localhost"}),
             ops_test.model.deploy(
                 "postgresql-k8s",
                 application_name="jimm-db",
@@ -98,7 +98,7 @@ async def deploy_jimm(
     await ops_test.model.integrate("{}:receive-ca-cert".format(APP_NAME), self_signed_certificates_app_name)
 
     logger.info("adding ingress relation")
-    await ops_test.model.integrate("{}:nginx-route".format(APP_NAME), "jimm-ingress")
+    await ops_test.model.integrate("{}:ingress".format(APP_NAME), "jimm-ingress")
 
     logger.info("adding openfga postgresql relation")
     await ops_test.model.integrate("openfga:database", "jimm-db:database")
