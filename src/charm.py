@@ -158,12 +158,18 @@ class JimmOperatorCharm(CharmBase):
             self._on_certificate_revoked,
         )
 
-        # Traefik ingress relation
+        # Traefik ingress relations
         self.ingress = IngressPerAppRequirer(
             self,
             relation_name="ingress",
             strip_prefix=True,
             port=8080,
+        )
+        self.internal_ingress = IngressPerAppRequirer(
+            self,
+            relation_name="internal-ingress",
+            strip_prefix=True,
+            port=9090,
         )
 
         # if the unit is the leader we set the port. We set the port just for the leader,
@@ -183,6 +189,12 @@ class JimmOperatorCharm(CharmBase):
         self.framework.observe(self.ingress.on.ready, self._on_ingress_ready)
         self.framework.observe(
             self.ingress.on.revoked,
+            self._on_ingress_revoked,
+        )
+
+        self.framework.observe(self.internal_ingress.on.ready, self._on_ingress_ready)
+        self.framework.observe(
+            self.internal_ingress.on.revoked,
             self._on_ingress_revoked,
         )
 
@@ -421,6 +433,7 @@ class JimmOperatorCharm(CharmBase):
             "JIMM_DSN": self._make_database_dsn(),
             "JIMM_JWT_EXPIRY": self.config.get("jwt-expiry"),
             "JIMM_LISTEN_ADDR": ":8080",
+            "JIMM_INTERNAL_LISTEN_ADDR": ":9090",
             "JIMM_LOG_LEVEL": self.config.get("log-level", ""),
             "JIMM_MACAROON_EXPIRY_DURATION": self.config.get("macaroon-expiry-duration", "24h"),
             "JIMM_OAUTH_CLIENT_ID": oauth_provider_info.client_id,
