@@ -66,6 +66,7 @@ BASE_ENV = {
     "JIMM_DASHBOARD_LOCATION": "https://jaas.ai/models",
     "JIMM_DNS_NAME": "jimm.localhost",
     "JIMM_DSN": "postgresql://postgres-user:postgres-pass@local-1.localhost/jimm",
+    "JIMM_INTERNAL_LISTEN_ADDR": ":9090",
     "JIMM_IS_LEADER": "True",
     "JIMM_JWT_EXPIRY": "5m",
     "JIMM_LISTEN_ADDR": ":8080",

@@ -84,11 +84,6 @@ async def deploy_jimm(
                 application_name="traefik",
                 channel="latest/stable",
             ),
-            ops_test.model.deploy(
-                "traefik-k8s",
-                application_name="traefik-internal",
-                channel="latest/stable",
-            ),
         )
 
     logger.info("waiting for postgresql")
