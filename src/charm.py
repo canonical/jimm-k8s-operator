@@ -44,7 +44,6 @@ from charms.traefik_k8s.v2.ingress import (
     IngressPerAppRevokedEvent,
 )
 from charms.vault_k8s.v0 import vault_kv
-from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from ops import pebble
 from ops.charm import (
@@ -178,7 +177,7 @@ class JimmOperatorCharm(CharmBase):
         # https://github.com/canonical/traefik-k8s-operator/issues/440
         if self.unit.is_leader():
             self.ingress_ssh = IngressPerUnitRequirer(
-                self, relation_name="ingress-ssh", mode="tcp", port=self.config.get("ssh-port")
+                self, relation_name="ingress-ssh", mode="tcp", port=self._ssh_port
             )
         else:
             self.ingress_ssh = IngressPerUnitRequirer(self, relation_name="ingress-ssh", mode="tcp")
@@ -200,7 +199,10 @@ class JimmOperatorCharm(CharmBase):
 
         # Nginx ingress relation
         require_nginx_route(
-            charm=self, service_hostname=self.config.get("dns-name", ""), service_name=self.app.name, service_port=8080
+            charm=self,
+            service_hostname=str(self.config.get("dns-name", "")),
+            service_name=self.app.name,
+            service_port=8080,
         )
 
         # OAuth relation
@@ -268,6 +270,10 @@ class JimmOperatorCharm(CharmBase):
             self.trusted_cert_transfer.on.certificates_removed,
             self._on_trusted_certificate_removed,
         )
+
+    @property
+    def _ssh_port(self) -> int:
+        return int(self.config.get("ssh-port", 0))
 
     def _on_peer_relation_changed(self, event) -> None:
         self._update_workload(event)
@@ -415,7 +421,7 @@ class JimmOperatorCharm(CharmBase):
         # Update the ssh ingress to reflect ssh port config changed. This is done in the leader unit
         # because the ingress is per-unit and it doesn't support multiple units.
         if self.unit.is_leader():
-            self.ingress_ssh.provide_ingress_requirements(port=self.config.get("ssh-port"))
+            self.ingress_ssh.provide_ingress_requirements(port=self._ssh_port)
 
         config_values = {
             "BAKERY_PRIVATE_KEY": self.config.get("private-key", ""),
@@ -473,7 +479,7 @@ class JimmOperatorCharm(CharmBase):
         # remove empty configuration values
         config_values = {key: value for key, value in config_values.items() if value}
 
-        pebble_layer = {
+        pebble_layer: pebble.LayerDict = {
             "summary": "jimm layer",
             "description": "pebble config layer for jimm",
             "services": {
@@ -621,7 +627,7 @@ class JimmOperatorCharm(CharmBase):
     def _on_database_event(self, event: DatabaseRequiresEvent) -> None:
         """Database event handler."""
 
-        if event.username is None or event.password is None:
+        if getattr(event, "username", None) is None or getattr(event, "password", None) is None:
             logger.info(
                 "(postgresql) Relation data is not complete (missing `username` or `password` field); "
                 "returning early. This hook should retriggered later."
@@ -654,13 +660,14 @@ class JimmOperatorCharm(CharmBase):
 
         if container.can_connect():
             plan = container.get_plan()
-            if plan.services.get(JIMM_SERVICE_NAME) is None:
+            service = plan.services.get(JIMM_SERVICE_NAME)
+            if service is None:
                 logger.warning("waiting for service")
                 if self.unit.status.message == "":
                     self.unit.status = WaitingStatus("waiting for service")
                 return False
 
-            env_vars = plan.services.get(JIMM_SERVICE_NAME).environment
+            env_vars = service.environment
 
             for setting, message in REQUIRED_SETTINGS.items():
                 if not env_vars.get(setting, ""):
@@ -679,6 +686,9 @@ class JimmOperatorCharm(CharmBase):
 
     def _on_vault_connected(self, event: vault_kv.VaultKvConnectedEvent):
         relation = self.model.get_relation(event.relation_name, event.relation_id)
+        if relation is None:
+            logger.warning("vault relation missing during connected event")
+            return
         egress_subnets = self._egress_subnets(self.model.get_binding(relation))
         self.vault.request_credentials(relation, egress_subnets, self.get_vault_nonce())
 
@@ -701,7 +711,7 @@ class JimmOperatorCharm(CharmBase):
         _get_host_key gets the host key from the user's secret set in the charm config if set or from the default secret
         created by the charm.
         """
-        host_key_secret_id = self.config.get("ssh-host-key-secret-id", "")
+        host_key_secret_id = str(self.config.get("ssh-host-key-secret-id", ""))
         if not host_key_secret_id:
             host_key = self.model.get_secret(label=HOST_KEY_SECRET_LABEL).get_content(refresh=True)[HOST_KEY_LOOKUP]
         else:
@@ -1003,11 +1013,11 @@ def is_valid_private_key(key: str):
     is_valid_private_key checks if the provided key is a valid private key, either PEM or OPENSSH format.
     """
     try:
-        serialization.load_pem_private_key(key.encode(), password=None, backend=default_backend())
+        serialization.load_pem_private_key(key.encode(), password=None)
         return True
     except Exception:
         try:
-            serialization.load_ssh_private_key(key.encode(), password=None, backend=default_backend())
+            serialization.load_ssh_private_key(key.encode(), password=None)
             return True
         except Exception as e:
             logger.error(f"Invalid private key: {e}")
