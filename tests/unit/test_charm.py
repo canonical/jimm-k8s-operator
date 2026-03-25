@@ -10,6 +10,7 @@ import json
 import os
 import pathlib
 import tempfile
+from datetime import datetime, timedelta, timezone
 from unittest import TestCase, mock
 
 import ops
@@ -19,6 +20,16 @@ from ops.testing import ActionFailed, Harness
 from src.charm import (
     HOST_KEY_LOOKUP,
     JIMM_SERVICE_NAME,
+    JWKS_ACTIVATE_AT_LOOKUP,
+    JWKS_EXPIRES_AT_LOOKUP,
+    JWKS_KID_LOOKUP,
+    JWKS_PRE_ROTATION_INTERVAL,
+    JWKS_PRIVATE_KEY_LOOKUP,
+    JWKS_PUBLIC_JWK_LOOKUP,
+    JWKS_PUBLISH_AT_LOOKUP,
+    JWKS_RETENTION_INTERVAL,
+    JWKS_RETIRE_AT_LOOKUP,
+    JWKS_ROTATION_PERIOD,
     SESSION_KEY_LOOKUP,
     TRUSTED_CA_PATH,
     WORKLOAD_CONTAINER,
@@ -55,6 +66,24 @@ MINIMAL_CONFIG = {
 }
 
 fixed_host_key = new_host_key()[HOST_KEY_LOOKUP]
+TEST_JWKS_PRIVATE_KEY_1 = "-----BEGIN RSA PRIVATE KEY-----\nkey-1\n-----END RSA PRIVATE KEY-----\n"
+TEST_JWKS_PRIVATE_KEY_2 = "-----BEGIN RSA PRIVATE KEY-----\nkey-2\n-----END RSA PRIVATE KEY-----\n"
+TEST_JWKS_PUBLIC_1 = {
+    "alg": "RS256",
+    "e": "AQAB",
+    "kid": "00000000-0000-0000-0000-000000000001",
+    "kty": "RSA",
+    "n": "test-modulus-1",
+    "use": "sig",
+}
+TEST_JWKS_PUBLIC_2 = {
+    "alg": "RS256",
+    "e": "AQAB",
+    "kid": "00000000-0000-0000-0000-000000000002",
+    "kty": "RSA",
+    "n": "test-modulus-2",
+    "use": "sig",
+}
 
 BASE_ENV = {
     "BAKERY_PRIVATE_KEY": "ly/dzsI9Nt/4JxUILQeAX79qZ4mygDiuYGqc2ZEiDEc=",
@@ -69,6 +98,9 @@ BASE_ENV = {
     "JIMM_INTERNAL_LISTEN_ADDR": ":9090",
     "JIMM_IS_LEADER": "True",
     "JIMM_JWT_EXPIRY": "5m",
+    "JIMM_JWKS": json.dumps({"keys": [TEST_JWKS_PUBLIC_1]}, separators=(",", ":")),
+    "JIMM_JWKS_CACHE_MAX_AGE": "600",
+    "JIMM_JWKS_PRIVATE_KEY": TEST_JWKS_PRIVATE_KEY_1,
     "JIMM_LISTEN_ADDR": ":8080",
     "JIMM_LOG_LEVEL": "info",
     "JIMM_MACAROON_EXPIRY_DURATION": "24h",
@@ -125,11 +157,6 @@ def get_expected_plan(env):
     }
 
 
-class MockExec:
-    def wait_output():
-        return True
-
-
 class TestCharm(TestCase):
     def setUp(self):
         self.maxDiff = None
@@ -176,6 +203,28 @@ class TestCharm(TestCase):
         patcher = mock.patch("src.charm.new_session_key", return_value={SESSION_KEY_LOOKUP: "test-secret"})
         self.mock_key = patcher.start()
         self.fake_session_secret_patcher = patcher
+        self.addCleanup(patcher.stop)
+
+    def use_fake_jwks_secret(self, jwks_materials=None):
+        materials = jwks_materials or [(TEST_JWKS_PUBLIC_1, TEST_JWKS_PRIVATE_KEY_1)]
+        iterator = iter(materials)
+
+        def fake_new_jwks_secret(publish_at, activate_at):
+            public_jwk, private_key = next(iterator)
+            expires_at = activate_at + JWKS_ROTATION_PERIOD
+            retire_at = expires_at + JWKS_RETENTION_INTERVAL
+            return {
+                JWKS_ACTIVATE_AT_LOOKUP: _format_test_datetime(activate_at),
+                JWKS_EXPIRES_AT_LOOKUP: _format_test_datetime(expires_at),
+                JWKS_KID_LOOKUP: public_jwk["kid"],
+                JWKS_PRIVATE_KEY_LOOKUP: private_key,
+                JWKS_PUBLIC_JWK_LOOKUP: json.dumps(public_jwk, separators=(",", ":"), sort_keys=True),
+                JWKS_PUBLISH_AT_LOOKUP: _format_test_datetime(publish_at),
+                JWKS_RETIRE_AT_LOOKUP: _format_test_datetime(retire_at),
+            }
+
+        patcher = mock.patch("src.charm.new_jwks_secret", side_effect=fake_new_jwks_secret)
+        patcher.start()
         self.addCleanup(patcher.stop)
 
     def use_fake_setup_fga_model(self):
@@ -271,10 +320,11 @@ class TestCharm(TestCase):
         self.harness.enable_hooks()
         self.harness.charm.on.install.emit()
 
-    def start_minimal_jimm(self):
+    def start_minimal_jimm(self, jwks_materials=None):
         self.harness.enable_hooks()
         self.use_fake_session_secret()
         self.use_fake_host_key()
+        self.use_fake_jwks_secret(jwks_materials)
         self.use_fake_setup_fga_model()
         self.create_auth_model_info()
         self.add_openfga_relation()
@@ -324,6 +374,7 @@ class TestCharm(TestCase):
         self.harness.enable_hooks()
         self.use_fake_session_secret()
         self.use_fake_host_key()
+        self.use_fake_jwks_secret()
         self.use_fake_setup_fga_model()
         self.create_auth_model_info()
         self.add_openfga_relation()
@@ -751,6 +802,45 @@ class TestCharm(TestCase):
         self.assertTrue(len(new_session_secret) > 0)
         self.assertNotEqual(old_session_secret, new_session_secret)
 
+    def test_jwks_rotation_lifecycle(self):
+        base_time = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        with mock.patch.object(JimmOperatorCharm, "_now", return_value=base_time):
+            self.start_minimal_jimm(
+                jwks_materials=[
+                    (TEST_JWKS_PUBLIC_1, TEST_JWKS_PRIVATE_KEY_1),
+                    (TEST_JWKS_PUBLIC_2, TEST_JWKS_PRIVATE_KEY_2),
+                ]
+            )
+
+        initial_env = self.harness.get_container_pebble_plan("jimm").services[JIMM_SERVICE_NAME].environment
+        self.assertEqual(json.loads(initial_env["JIMM_JWKS"]), {"keys": [TEST_JWKS_PUBLIC_1]})
+        self.assertEqual(initial_env["JIMM_JWKS_PRIVATE_KEY"], TEST_JWKS_PRIVATE_KEY_1)
+
+        publish_time = base_time + JWKS_ROTATION_PERIOD - JWKS_PRE_ROTATION_INTERVAL
+        with mock.patch.object(JimmOperatorCharm, "_now", return_value=publish_time):
+            self.harness.charm.on.update_status.emit()
+
+        published_env = self.harness.get_container_pebble_plan("jimm").services[JIMM_SERVICE_NAME].environment
+        self.assertEqual(json.loads(published_env["JIMM_JWKS"]), {"keys": [TEST_JWKS_PUBLIC_1, TEST_JWKS_PUBLIC_2]})
+        self.assertEqual(published_env["JIMM_JWKS_PRIVATE_KEY"], TEST_JWKS_PRIVATE_KEY_1)
+
+        switch_time = publish_time + timedelta(hours=1, minutes=1)
+        with mock.patch.object(JimmOperatorCharm, "_now", return_value=switch_time):
+            self.harness.charm.on.update_status.emit()
+
+        switched_env = self.harness.get_container_pebble_plan("jimm").services[JIMM_SERVICE_NAME].environment
+        self.assertEqual(json.loads(switched_env["JIMM_JWKS"]), {"keys": [TEST_JWKS_PUBLIC_1, TEST_JWKS_PUBLIC_2]})
+        self.assertEqual(switched_env["JIMM_JWKS_PRIVATE_KEY"], TEST_JWKS_PRIVATE_KEY_2)
+
+        cleanup_time = base_time + JWKS_ROTATION_PERIOD + JWKS_RETENTION_INTERVAL + timedelta(minutes=1)
+        with mock.patch.object(JimmOperatorCharm, "_now", return_value=cleanup_time):
+            self.harness.charm.on.update_status.emit()
+
+        cleaned_env = self.harness.get_container_pebble_plan("jimm").services[JIMM_SERVICE_NAME].environment
+        self.assertEqual(json.loads(cleaned_env["JIMM_JWKS"]), {"keys": [TEST_JWKS_PUBLIC_2]})
+        self.assertEqual(cleaned_env["JIMM_JWKS_PRIVATE_KEY"], TEST_JWKS_PRIVATE_KEY_2)
+        self.assertEqual(len(self.harness.charm._state.jwks_secret_ids), 1)
+
     def test_default_host_key_is_valid(self):
         self.start_minimal_jimm()
 
@@ -915,3 +1005,7 @@ class TestCharm(TestCase):
         ca_bundle_content = ca_bundle_path.read_text()
         self.assertIn("cert1", ca_bundle_content)
         self.assertIn("cert2", ca_bundle_content)
+
+
+def _format_test_datetime(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
