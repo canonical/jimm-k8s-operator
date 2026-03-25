@@ -17,6 +17,7 @@ parts:
       - exceptiongroup
       - hvac
       - idna
+      - importlib_metadata
       - iniconfig
       - Jinja2
       - jsonschema
@@ -24,6 +25,7 @@ parts:
       - MarkupSafe
       - netaddr
       - ops
+      - opentelemetry-api
       - ops-scenario
       - packaging
       - pbr
@@ -33,15 +35,20 @@ parts:
       - pydantic_core
       - pytest
       - pytest-interface-tester
+      - Pygments
       - PyYAML
       - referencing
       - requests
       - rpds-py
+      - setuptools
+      - tenacity
       - tomli
       - typer
+      - typing-inspection
       - typing_extensions
       - urllib3
       - websocket-client
+      - zipp
 bases:
   # This run-on is not as strict as the machine charm
   # as the jimm-server runs in a container.
