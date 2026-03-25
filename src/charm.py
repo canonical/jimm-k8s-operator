@@ -627,14 +627,7 @@ class JimmOperatorCharm(CharmBase):
     def _on_database_event(self, event: DatabaseRequiresEvent) -> None:
         """Database event handler."""
 
-        if getattr(event, "username", None) is None or getattr(event, "password", None) is None:
-            logger.info(
-                "(postgresql) Relation data is not complete (missing `username` or `password` field); "
-                "returning early. This hook should retriggered later."
-            )
-            return
-
-        logger.info("received database details")
+        logger.info("received database event")
         self._update_workload(event)
 
     @requires_state_setter
