@@ -464,6 +464,7 @@ class JimmOperatorCharm(CharmBase):
         jwks_config = self._jwks_config()
         if not jwks_config:
             logger.warning("JWKS secret is not ready yet")
+            self.unit.status = BlockedStatus("Waiting for JWKS secret")
             event.defer()
             return
 

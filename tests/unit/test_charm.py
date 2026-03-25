@@ -561,6 +561,23 @@ class TestCharm(TestCase):
         self.assertEqual(self.harness.charm.unit.status.name, BlockedStatus.name)
         self.assertEqual(self.harness.charm.unit.status.message, "Waiting for OAuth relation")
 
+    @mock.patch("src.charm.JimmOperatorCharm._jwks_config", return_value=None)
+    def test_app_enters_block_state_if_jwks_config_not_ready(self, _mock_jwks_config):
+        self.harness.enable_hooks()
+        self.use_fake_session_secret()
+        self.use_fake_host_key()
+        self.use_fake_setup_fga_model()
+        self.create_auth_model_info()
+        self.add_openfga_relation()
+        self.add_vault_relation()
+        self.add_postgres_relation()
+        self.harness.update_config(MINIMAL_CONFIG)
+
+        plan = self.harness.get_container_pebble_plan("jimm")
+        self.assertEqual(plan.to_dict(), {})
+        self.assertEqual(self.harness.charm.unit.status.name, BlockedStatus.name)
+        self.assertEqual(self.harness.charm.unit.status.message, "Waiting for JWKS secret")
+
     def test_audit_log_retention_config(self):
         self.start_minimal_jimm()
 
