@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from unittest import TestCase, mock
 
 import ops
-from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
+from ops.model import ActiveStatus, BlockedStatus, SecretNotFoundError, WaitingStatus
 from ops.testing import ActionFailed, Harness
 
 from src.charm import (
@@ -25,6 +25,7 @@ from src.charm import (
     JWKS_KID_LOOKUP,
     JWKS_PRE_ROTATION_INTERVAL,
     JWKS_PRIVATE_KEY_LOOKUP,
+    JWKS_PROPAGATION_DELAY,
     JWKS_PUBLIC_JWK_LOOKUP,
     JWKS_PUBLISH_AT_LOOKUP,
     JWKS_RETENTION_INTERVAL,
@@ -330,6 +331,7 @@ class TestCharm(TestCase):
         self.add_openfga_relation()
         self.add_vault_relation()
         self.add_postgres_relation()
+        self.harness.charm.ensure_jwks_secret_key()
         self.harness.update_config(MINIMAL_CONFIG)
         self.assertEqual(self.harness.charm.unit.status.name, ActiveStatus.name)
         self.assertEqual(self.harness.charm.unit.status.message, "running")
@@ -380,6 +382,7 @@ class TestCharm(TestCase):
         self.add_openfga_relation()
         self.add_vault_relation()
         self.add_postgres_relation()
+        self.harness.charm.ensure_jwks_secret_key()
 
         config_with_scheme = {**MINIMAL_CONFIG, "dns-name": "https://jimm.localhost"}
         self.harness.update_config(config_with_scheme)
@@ -829,6 +832,7 @@ class TestCharm(TestCase):
                 ]
             )
 
+        retired_secret_id = self.harness.charm._state.jwks_secret_ids[0]
         initial_env = self.harness.get_container_pebble_plan("jimm").services[JIMM_SERVICE_NAME].environment
         self.assertEqual(json.loads(initial_env["JIMM_JWKS"]), {"keys": [TEST_JWKS_PUBLIC_1]})
         self.assertEqual(initial_env["JIMM_JWKS_PRIVATE_KEY"], TEST_JWKS_PRIVATE_KEY_1)
@@ -841,7 +845,7 @@ class TestCharm(TestCase):
         self.assertEqual(json.loads(published_env["JIMM_JWKS"]), {"keys": [TEST_JWKS_PUBLIC_1, TEST_JWKS_PUBLIC_2]})
         self.assertEqual(published_env["JIMM_JWKS_PRIVATE_KEY"], TEST_JWKS_PRIVATE_KEY_1)
 
-        switch_time = publish_time + timedelta(hours=1, minutes=1)
+        switch_time = publish_time + JWKS_PROPAGATION_DELAY
         with mock.patch.object(JimmOperatorCharm, "_now", return_value=switch_time):
             self.harness.charm.on.update_status.emit()
 
@@ -857,6 +861,37 @@ class TestCharm(TestCase):
         self.assertEqual(json.loads(cleaned_env["JIMM_JWKS"]), {"keys": [TEST_JWKS_PUBLIC_2]})
         self.assertEqual(cleaned_env["JIMM_JWKS_PRIVATE_KEY"], TEST_JWKS_PRIVATE_KEY_2)
         self.assertEqual(len(self.harness.charm._state.jwks_secret_ids), 1)
+        with self.assertRaises(SecretNotFoundError):
+            self.harness.model.get_secret(id=retired_secret_id)
+
+    def test_jwks_rotation_does_not_create_multiple_future_keys(self):
+        base_time = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        with mock.patch.object(JimmOperatorCharm, "_now", return_value=base_time):
+            self.start_minimal_jimm(
+                jwks_materials=[
+                    (TEST_JWKS_PUBLIC_1, TEST_JWKS_PRIVATE_KEY_1),
+                    (TEST_JWKS_PUBLIC_2, TEST_JWKS_PRIVATE_KEY_2),
+                ]
+            )
+        
+        published_env = self.harness.get_container_pebble_plan("jimm").services[JIMM_SERVICE_NAME].environment
+        self.assertEqual(len(self.harness.charm._state.jwks_secret_ids), 1)
+
+        publish_time = base_time + JWKS_ROTATION_PERIOD - JWKS_PRE_ROTATION_INTERVAL
+        with mock.patch.object(JimmOperatorCharm, "_now", return_value=publish_time):
+            self.harness.charm.on.update_status.emit()
+
+        published_env = self.harness.get_container_pebble_plan("jimm").services[JIMM_SERVICE_NAME].environment
+        self.assertEqual(len(self.harness.charm._state.jwks_secret_ids), 2)
+
+        before_activation_time = publish_time + JWKS_PROPAGATION_DELAY - timedelta(minutes=1)
+        with mock.patch.object(JimmOperatorCharm, "_now", return_value=before_activation_time):
+            self.harness.charm.on.update_status.emit()
+
+        published_env = self.harness.get_container_pebble_plan("jimm").services[JIMM_SERVICE_NAME].environment
+        self.assertEqual(len(self.harness.charm._state.jwks_secret_ids), 2)
+        self.assertEqual(json.loads(published_env["JIMM_JWKS"]), {"keys": [TEST_JWKS_PUBLIC_1, TEST_JWKS_PUBLIC_2]})
+        self.assertEqual(published_env["JIMM_JWKS_PRIVATE_KEY"], TEST_JWKS_PRIVATE_KEY_1)
 
     def test_default_host_key_is_valid(self):
         self.start_minimal_jimm()

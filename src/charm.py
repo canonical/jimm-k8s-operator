@@ -1043,12 +1043,11 @@ class JimmOperatorCharm(CharmBase):
 
         The returned JWKS contains every public key that should still be advertised,
         including any pre-rotated key during the overlap window. The private key is
-        always taken from the newest key whose activation time has passed. Returns
-        ``None`` until the charm has enough secret state to configure the workload.
+        always taken from the newest key whose activation time has passed. This
+        method is read-only; leader hooks reconcile the secret lifecycle separately.
+        Returns ``None`` until the charm has enough secret state to configure the
+        workload.
         """
-        if self.unit.is_leader() and self._state.is_ready():
-            self._reconcile_jwks_secrets()
-
         secret_ids = list(self._state.jwks_secret_ids or [])
         if not secret_ids:
             return None
@@ -1076,6 +1075,16 @@ class JimmOperatorCharm(CharmBase):
         return {"jwks": jwks, "private_key": active[-1].private_key}
 
     def _reconcile_jwks_secrets(self) -> None:
+        """ Progress JWKS signing keys through their lifecycle and publish the active set of public keys.
+
+        JWKS rotation keeps one Juju secret per signing key and moves each key through
+        four phases. First, the leader seeds or pre-publishes a key so its public JWK
+        appears in the JWKS document. Second, after the propagation delay, that key
+        becomes the active signer while older public keys may still be advertised.
+        Third, once the key's signing lifetime ends, it stops signing but remains
+        published for a retention window so previously issued tokens can still be
+        validated. Finally, after the retention window, the old secret is removed.
+        """
         secret_ids = list(self._state.jwks_secret_ids or [])
         now = self._now()
         existing = self._load_jwks_secrets(secret_ids, refresh=True)
@@ -1090,9 +1099,10 @@ class JimmOperatorCharm(CharmBase):
         future = [secret for secret in existing if secret.activate_at > now]
         changed = False
 
-        if latest.expires_at - JWKS_PRE_ROTATION_INTERVAL <= now and not future:
-            # Prepublish the next key, then wait longer than the advertised cache duration
-            # before allowing it to become the active signing key.
+        pre_rotation_starts_at = latest.expires_at - JWKS_PRE_ROTATION_INTERVAL
+        if now >= pre_rotation_starts_at and not future:
+            # Prepublish the next key, ensuring we wait >> the advertised cache
+            # duration before allowing it to become the active signing key.
             publish_at = now
             activate_at = now + JWKS_PROPAGATION_DELAY
             secret = self._create_jwks_secret(publish_at, activate_at)
