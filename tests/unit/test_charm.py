@@ -28,8 +28,6 @@ from src.charm import (
     JWKS_PROPAGATION_DELAY,
     JWKS_PUBLIC_JWK_LOOKUP,
     JWKS_PUBLISH_AT_LOOKUP,
-    JWKS_RETENTION_INTERVAL,
-    JWKS_RETIRE_AT_LOOKUP,
     JWKS_ROTATION_PERIOD,
     SESSION_KEY_LOOKUP,
     TRUSTED_CA_PATH,
@@ -213,7 +211,6 @@ class TestCharm(TestCase):
         def fake_new_jwks_secret(publish_at, activate_at):
             public_jwk, private_key = next(iterator)
             expires_at = activate_at + JWKS_ROTATION_PERIOD
-            retire_at = expires_at + JWKS_RETENTION_INTERVAL
             return {
                 JWKS_ACTIVATE_AT_LOOKUP: _format_test_datetime(activate_at),
                 JWKS_EXPIRES_AT_LOOKUP: _format_test_datetime(expires_at),
@@ -221,7 +218,6 @@ class TestCharm(TestCase):
                 JWKS_PRIVATE_KEY_LOOKUP: private_key,
                 JWKS_PUBLIC_JWK_LOOKUP: json.dumps(public_jwk, separators=(",", ":"), sort_keys=True),
                 JWKS_PUBLISH_AT_LOOKUP: _format_test_datetime(publish_at),
-                JWKS_RETIRE_AT_LOOKUP: _format_test_datetime(retire_at),
             }
 
         patcher = mock.patch("src.charm.new_jwks_secret", side_effect=fake_new_jwks_secret)
@@ -853,7 +849,7 @@ class TestCharm(TestCase):
         self.assertEqual(json.loads(switched_env["JIMM_JWKS"]), {"keys": [TEST_JWKS_PUBLIC_1, TEST_JWKS_PUBLIC_2]})
         self.assertEqual(switched_env["JIMM_JWKS_PRIVATE_KEY"], TEST_JWKS_PRIVATE_KEY_2)
 
-        cleanup_time = base_time + JWKS_ROTATION_PERIOD + JWKS_RETENTION_INTERVAL + timedelta(minutes=1)
+        cleanup_time = base_time + JWKS_ROTATION_PERIOD + timedelta(minutes=1)
         with mock.patch.object(JimmOperatorCharm, "_now", return_value=cleanup_time):
             self.harness.charm.on.update_status.emit()
 

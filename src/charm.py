@@ -116,19 +116,17 @@ JWKS_SECRET_LABEL_PREFIX = "jwks-key-"
 JWKS_KID_LOOKUP = "kid"
 JWKS_PUBLIC_JWK_LOOKUP = "publicjwk"
 JWKS_PRIVATE_KEY_LOOKUP = "privatekey"
-# Secret content keys that define when a key is published, starts signing, expires,
-# and can finally be removed after the overlap window.
+# Secret content keys that define when a key is published, starts signing, and expires.
 JWKS_PUBLISH_AT_LOOKUP = "publishat"
 JWKS_ACTIVATE_AT_LOOKUP = "activateat"
 JWKS_EXPIRES_AT_LOOKUP = "expiresat"
-JWKS_RETIRE_AT_LOOKUP = "retireat"
 
 # JWKS Rotation time diagram
-# Initial Key     New Key      Activate Key    Expire Old Key     Retire Old Key
-#     |              |              |               |                   |
-# ----o--------------o--------------o---------------o-------------------o------> Time
-#     ^              ^              ^               ^                   ^
-#    T=0          T=day 83     T=day 83 + 1h     T=day 90            T=day 97
+# Initial Key     New Key      Activate Key    Expire Old Key
+#     |              |              |               |
+# ----o--------------o--------------o---------------o------> Time
+#     ^              ^              ^               ^
+#    T=0          T=day 83     T=day 83 + 1h     T=day 90
 
 # How long one signing key remains valid.
 JWKS_ROTATION_PERIOD = timedelta(days=90)
@@ -136,8 +134,6 @@ JWKS_ROTATION_PERIOD = timedelta(days=90)
 JWKS_PRE_ROTATION_INTERVAL = timedelta(days=7)
 # Delay between publishing a new public key and using its private key for signing.
 JWKS_PROPAGATION_DELAY = timedelta(hours=1)
-# How long a replaced public key remains published so older tokens can still validate.
-JWKS_RETENTION_INTERVAL = timedelta(days=7)
 # Max-Age advertised with the JWKS endpoint so consumers know their cache lifetime.
 JWKS_CACHE_MAX_AGE = 600
 CERTIFICATE_TRANSFER_INTEGRATION_NAME = "receive-ca-cert"
@@ -159,7 +155,6 @@ class JWKSSecret:
     private_key: str
     public_jwk: dict[str, str]
     publish_at: datetime
-    retire_at: datetime
     secret: Secret
     secret_id: str
 
@@ -1068,7 +1063,7 @@ class JimmOperatorCharm(CharmBase):
         # Publish both the current and pre-rotated public keys for the overlap window so
         # controllers can cache the upcoming key before JIMM starts signing with it.
         published = sorted(
-            [secret for secret in secrets if secret.publish_at <= now < secret.retire_at],
+            [secret for secret in secrets if secret.publish_at <= now < secret.expires_at],
             key=lambda secret: secret.activate_at,
         )
         if not published:
@@ -1089,9 +1084,9 @@ class JimmOperatorCharm(CharmBase):
         four phases. First, the leader seeds or pre-publishes a key so its public JWK
         appears in the JWKS document. Second, after the propagation delay, that key
         becomes the active signer while older public keys may still be advertised.
-        Third, once the key's signing lifetime ends, it stops signing but remains
-        published for a retention window so previously issued tokens can still be
-        validated. Finally, after the retention window, the old secret is removed.
+        Third, once a newer key is active, older public keys remain published until
+        their original expiry time so recently issued tokens can still be validated.
+        Finally, once a key expires, the old secret is removed.
         """
         secret_ids = list(self._state.jwks_secret_ids or [])
         now = self._now()
@@ -1124,8 +1119,8 @@ class JimmOperatorCharm(CharmBase):
             if secret is None:
                 changed = True
                 continue
-            if secret.retire_at <= now:
-                # Once the overlap window has passed, remove the old Juju secret entirely.
+            if secret.expires_at <= now:
+                # Once a key has expired, remove the old Juju secret entirely.
                 secret.secret.remove_all_revisions()
                 changed = True
                 continue
@@ -1156,7 +1151,6 @@ class JimmOperatorCharm(CharmBase):
                     private_key=content[JWKS_PRIVATE_KEY_LOOKUP],
                     public_jwk=json.loads(content[JWKS_PUBLIC_JWK_LOOKUP]),
                     publish_at=_parse_datetime(content[JWKS_PUBLISH_AT_LOOKUP]),
-                    retire_at=_parse_datetime(content[JWKS_RETIRE_AT_LOOKUP]),
                     secret=secret,
                     secret_id=secret.id,
                 )
@@ -1177,7 +1171,7 @@ def new_host_key():
 
 
 def new_jwks_secret(publish_at: datetime, activate_at: datetime) -> dict[str, str]:
-    # Each Juju secret stores one signing key plus its publish/activate/retire timestamps.
+    # Each Juju secret stores one signing key plus its publish/activate/expiry timestamps.
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=4096)
     private_pem = private_key.private_bytes(
         encoding=serialization.Encoding.PEM,
@@ -1195,7 +1189,6 @@ def new_jwks_secret(publish_at: datetime, activate_at: datetime) -> dict[str, st
         "use": "sig",
     }
     expires_at = activate_at + JWKS_ROTATION_PERIOD
-    retire_at = expires_at + JWKS_RETENTION_INTERVAL
     return {
         JWKS_ACTIVATE_AT_LOOKUP: _format_datetime(activate_at),
         JWKS_EXPIRES_AT_LOOKUP: _format_datetime(expires_at),
@@ -1203,7 +1196,6 @@ def new_jwks_secret(publish_at: datetime, activate_at: datetime) -> dict[str, st
         JWKS_PRIVATE_KEY_LOOKUP: private_pem,
         JWKS_PUBLIC_JWK_LOOKUP: json.dumps(public_jwk, separators=(",", ":"), sort_keys=True),
         JWKS_PUBLISH_AT_LOOKUP: _format_datetime(publish_at),
-        JWKS_RETIRE_AT_LOOKUP: _format_datetime(retire_at),
     }
 
 
