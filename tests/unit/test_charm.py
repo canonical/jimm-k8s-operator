@@ -27,7 +27,6 @@ from src.charm import (
     JWKS_PRIVATE_KEY_LOOKUP,
     JWKS_PROPAGATION_DELAY,
     JWKS_PUBLIC_JWK_LOOKUP,
-    JWKS_PUBLISH_AT_LOOKUP,
     JWKS_ROTATION_PERIOD,
     SESSION_KEY_LOOKUP,
     TRUSTED_CA_PATH,
@@ -208,7 +207,7 @@ class TestCharm(TestCase):
         materials = jwks_materials or [(TEST_JWKS_PUBLIC_1, TEST_JWKS_PRIVATE_KEY_1)]
         iterator = iter(materials)
 
-        def fake_new_jwks_secret(publish_at, activate_at):
+        def fake_new_jwks_secret(activate_at):
             public_jwk, private_key = next(iterator)
             expires_at = activate_at + JWKS_ROTATION_PERIOD
             return {
@@ -217,7 +216,6 @@ class TestCharm(TestCase):
                 JWKS_KID_LOOKUP: public_jwk["kid"],
                 JWKS_PRIVATE_KEY_LOOKUP: private_key,
                 JWKS_PUBLIC_JWK_LOOKUP: json.dumps(public_jwk, separators=(",", ":"), sort_keys=True),
-                JWKS_PUBLISH_AT_LOOKUP: _format_test_datetime(publish_at),
             }
 
         patcher = mock.patch("src.charm.new_jwks_secret", side_effect=fake_new_jwks_secret)

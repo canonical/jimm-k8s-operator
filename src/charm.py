@@ -116,8 +116,7 @@ JWKS_SECRET_LABEL_PREFIX = "jwks-key-"
 JWKS_KID_LOOKUP = "kid"
 JWKS_PUBLIC_JWK_LOOKUP = "publicjwk"
 JWKS_PRIVATE_KEY_LOOKUP = "privatekey"
-# Secret content keys that define when a key is published, starts signing, and expires.
-JWKS_PUBLISH_AT_LOOKUP = "publishat"
+# Secret content keys that define when a key starts signing and expires.
 JWKS_ACTIVATE_AT_LOOKUP = "activateat"
 JWKS_EXPIRES_AT_LOOKUP = "expiresat"
 
@@ -154,7 +153,6 @@ class JWKSSecret:
     kid: str
     private_key: str
     public_jwk: dict[str, str]
-    publish_at: datetime
     secret: Secret
     secret_id: str
 
@@ -1060,10 +1058,9 @@ class JimmOperatorCharm(CharmBase):
             return None
 
         now = self._now()
-        # Publish both the current and pre-rotated public keys for the overlap window so
-        # controllers can cache the upcoming key before JIMM starts signing with it.
+        # Every extant key is published until expiry.
         published = sorted(
-            [secret for secret in secrets if secret.publish_at <= now < secret.expires_at],
+            [secret for secret in secrets if now < secret.expires_at],
             key=lambda secret: secret.activate_at,
         )
         if not published:
@@ -1086,7 +1083,7 @@ class JimmOperatorCharm(CharmBase):
         becomes the active signer while older public keys may still be advertised.
         Third, once a newer key is active, older public keys remain published until
         their original expiry time so recently issued tokens can still be validated.
-        Finally, once a key expires, the old secret is removed.
+        Finally, once a key expires, it is removed.
         """
         secret_ids = list(self._state.jwks_secret_ids or [])
         now = self._now()
@@ -1094,7 +1091,7 @@ class JimmOperatorCharm(CharmBase):
 
         if not existing:
             # Seed the very first signing key immediately so the workload can start.
-            secret = self._create_jwks_secret(now, now)
+            secret = self._create_jwks_secret(now)
             self._state.jwks_secret_ids = [secret.id]
             return
 
@@ -1106,9 +1103,8 @@ class JimmOperatorCharm(CharmBase):
         if now >= pre_rotation_starts_at and not future:
             # Prepublish the next key, ensuring we wait >> the advertised cache
             # duration before allowing it to become the active signing key.
-            publish_at = now
             activate_at = now + JWKS_PROPAGATION_DELAY
-            secret = self._create_jwks_secret(publish_at, activate_at)
+            secret = self._create_jwks_secret(activate_at)
             secret_ids.append(secret.id)
             changed = True
 
@@ -1129,8 +1125,8 @@ class JimmOperatorCharm(CharmBase):
         if changed or retained_ids != list(self._state.jwks_secret_ids or []):
             self._state.jwks_secret_ids = retained_ids
 
-    def _create_jwks_secret(self, publish_at: datetime, activate_at: datetime):
-        content = new_jwks_secret(publish_at, activate_at)
+    def _create_jwks_secret(self, activate_at: datetime):
+        content = new_jwks_secret(activate_at)
         return self.app.add_secret(content, label=f"{JWKS_SECRET_LABEL_PREFIX}{content[JWKS_KID_LOOKUP]}")
 
     def _load_jwks_secrets(self, secret_ids: list[str], refresh: bool) -> list[JWKSSecret]:
@@ -1150,7 +1146,6 @@ class JimmOperatorCharm(CharmBase):
                     kid=content[JWKS_KID_LOOKUP],
                     private_key=content[JWKS_PRIVATE_KEY_LOOKUP],
                     public_jwk=json.loads(content[JWKS_PUBLIC_JWK_LOOKUP]),
-                    publish_at=_parse_datetime(content[JWKS_PUBLISH_AT_LOOKUP]),
                     secret=secret,
                     secret_id=secret.id,
                 )
@@ -1170,8 +1165,8 @@ def new_host_key():
     return {HOST_KEY_LOOKUP: generate_private_key(key_size=4096).decode()}
 
 
-def new_jwks_secret(publish_at: datetime, activate_at: datetime) -> dict[str, str]:
-    # Each Juju secret stores one signing key plus its publish/activate/expiry timestamps.
+def new_jwks_secret(activate_at: datetime) -> dict[str, str]:
+    # Each Juju secret stores one signing key plus its activate/expiry timestamps.
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=4096)
     private_pem = private_key.private_bytes(
         encoding=serialization.Encoding.PEM,
@@ -1195,7 +1190,6 @@ def new_jwks_secret(publish_at: datetime, activate_at: datetime) -> dict[str, st
         JWKS_KID_LOOKUP: kid,
         JWKS_PRIVATE_KEY_LOOKUP: private_pem,
         JWKS_PUBLIC_JWK_LOOKUP: json.dumps(public_jwk, separators=(",", ":"), sort_keys=True),
-        JWKS_PUBLISH_AT_LOOKUP: _format_datetime(publish_at),
     }
 
 
