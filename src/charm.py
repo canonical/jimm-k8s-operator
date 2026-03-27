@@ -632,10 +632,7 @@ class JimmOperatorCharm(CharmBase):
         Fired on all units observing a secret after the owner of a secret has published a new revision.
         We must ensure the secret content is refreshed either here or where we fetch the secret.
         """
-        if event.secret.label == SESSION_KEY_SECRET_LABEL:
-            self.model.get_secret(label=SESSION_KEY_SECRET_LABEL).get_content(refresh=True)
-        elif event.secret.label and event.secret.label.startswith(JWKS_SECRET_LABEL_PREFIX):
-            event.secret.get_content(refresh=True)
+        event.secret.get_content(refresh=True)
         self._update_workload(event)
 
     def _on_start(self, event):
