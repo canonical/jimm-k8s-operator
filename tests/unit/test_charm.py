@@ -867,7 +867,7 @@ class TestCharm(TestCase):
                     (TEST_JWKS_PUBLIC_2, TEST_JWKS_PRIVATE_KEY_2),
                 ]
             )
-        
+
         published_env = self.harness.get_container_pebble_plan("jimm").services[JIMM_SERVICE_NAME].environment
         self.assertEqual(len(self.harness.charm._state.jwks_secret_ids), 1)
 

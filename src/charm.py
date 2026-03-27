@@ -1072,7 +1072,7 @@ class JimmOperatorCharm(CharmBase):
         return {"jwks": jwks, "private_key": active[-1].private_key}
 
     def _reconcile_jwks_secrets(self) -> None:
-        """ Progress JWKS signing keys through their lifecycle and publish the active set of public keys.
+        """Progress JWKS signing keys through their lifecycle and publish the active set of public keys.
 
         JWKS rotation keeps one Juju secret per signing key and moves each key through
         four phases. First, the leader seeds or pre-publishes a key so its public JWK
