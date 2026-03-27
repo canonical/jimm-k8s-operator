@@ -122,7 +122,15 @@ JWKS_PUBLISH_AT_LOOKUP = "publishat"
 JWKS_ACTIVATE_AT_LOOKUP = "activateat"
 JWKS_EXPIRES_AT_LOOKUP = "expiresat"
 JWKS_RETIRE_AT_LOOKUP = "retireat"
-# How long one signing key remains valid before the charm prepares a successor.
+
+# JWKS Rotation time diagram
+# Initial Key     New Key      Activate Key    Expire Old Key     Retire Old Key
+#     |              |              |               |                   |
+# ----o--------------o--------------o---------------o-------------------o------> Time
+#     ^              ^              ^               ^                   ^
+#    T=0          T=day 83     T=day 83 + 1h     T=day 90            T=day 97
+
+# How long one signing key remains valid.
 JWKS_ROTATION_PERIOD = timedelta(days=90)
 # How far ahead of expiry the next public key is published for controllers to fetch.
 JWKS_PRE_ROTATION_INTERVAL = timedelta(days=7)
