@@ -10,10 +10,10 @@ jobs:
 
   lint:
     name: Lint
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -39,7 +39,7 @@ jobs:
     name: Integration tests
     needs:
       - charm-build
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       # This action needs a decent amount of disk space for the deployment
       # and with Github runners we are seeing the Postgres charm report 
@@ -62,7 +62,7 @@ jobs:
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"/Ruby
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"/Java_Temurin-Hotspot_jdk
       - name: Checkout
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Setup operator environment
         uses: charmed-kubernetes/actions-operator@main
         with:
@@ -84,7 +84,7 @@ jobs:
           echo "$REGISTRY_CONFIG" | sudo tee -a /var/snap/microk8s/current/args/containerd-template.toml
           sudo snap restart microk8s.daemon-containerd
       # Download the charm from the build to speed up integration tests.
-      - uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: jimm-k8s-charm
       - name: Install tox
