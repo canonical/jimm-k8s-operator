@@ -23,11 +23,14 @@ from src.charm import (
     JWKS_ACTIVATE_AT_LOOKUP,
     JWKS_EXPIRES_AT_LOOKUP,
     JWKS_KID_LOOKUP,
+    JWKS_PATH,
     JWKS_PRE_ROTATION_INTERVAL,
+    JWKS_PRIVATE_KEY_PATH,
     JWKS_PRIVATE_KEY_LOOKUP,
     JWKS_PROPAGATION_DELAY,
     JWKS_PUBLIC_JWK_LOOKUP,
     JWKS_ROTATION_PERIOD,
+    JWKS_SECRET_LABELS,
     SESSION_KEY_LOOKUP,
     TRUSTED_CA_PATH,
     WORKLOAD_CONTAINER,
@@ -82,6 +85,15 @@ TEST_JWKS_PUBLIC_2 = {
     "n": "test-modulus-2",
     "use": "sig",
 }
+TEST_JWKS_PRIVATE_KEY_3 = "-----BEGIN RSA PRIVATE KEY-----\nkey-3\n-----END RSA PRIVATE KEY-----\n"
+TEST_JWKS_PUBLIC_3 = {
+    "alg": "RS256",
+    "e": "AQAB",
+    "kid": "00000000-0000-0000-0000-000000000003",
+    "kty": "RSA",
+    "n": "test-modulus-3",
+    "use": "sig",
+}
 
 BASE_ENV = {
     "BAKERY_PRIVATE_KEY": "ly/dzsI9Nt/4JxUILQeAX79qZ4mygDiuYGqc2ZEiDEc=",
@@ -96,9 +108,8 @@ BASE_ENV = {
     "JIMM_INTERNAL_LISTEN_ADDR": ":9090",
     "JIMM_IS_LEADER": "True",
     "JIMM_JWT_EXPIRY": "5m",
-    "JIMM_JWKS": json.dumps({"keys": [TEST_JWKS_PUBLIC_1]}, separators=(",", ":")),
-    "JIMM_JWKS_CACHE_MAX_AGE": "600",
-    "JIMM_JWKS_PRIVATE_KEY": TEST_JWKS_PRIVATE_KEY_1,
+    "JIMM_JWKS_PATH": str(JWKS_PATH),
+    "JIMM_JWKS_PRIVATE_KEY_PATH": str(JWKS_PRIVATE_KEY_PATH),
     "JIMM_LISTEN_ADDR": ":8080",
     "JIMM_LOG_LEVEL": "info",
     "JIMM_MACAROON_EXPIRY_DURATION": "24h",
@@ -221,6 +232,22 @@ class TestCharm(TestCase):
         patcher = mock.patch("src.charm.new_jwks_secret", side_effect=fake_new_jwks_secret)
         patcher.start()
         self.addCleanup(patcher.stop)
+
+    def existing_jwks_secrets(self):
+        secrets = {}
+        for label in JWKS_SECRET_LABELS:
+            try:
+                secrets[label] = self.harness.model.get_secret(label=label)
+            except SecretNotFoundError:
+                continue
+        return secrets
+
+    def secret_identity(self, secret):
+        return secret.id or secret.get_info().id
+
+    def read_workload_file(self, path: pathlib.Path) -> str:
+        root = self.harness.get_filesystem_root(WORKLOAD_CONTAINER)
+        return (pathlib.Path(root) / path.relative_to("/")).read_text()
 
     def use_fake_setup_fga_model(self):
         patcher = mock.patch("src.charm.JimmOperatorCharm.setup_fga_auth_model", return_value=None)
@@ -826,37 +853,79 @@ class TestCharm(TestCase):
                 ]
             )
 
-        retired_secret_id = self.harness.charm._state.jwks_secret_ids[0]
+        initial_secrets = self.existing_jwks_secrets()
+        self.assertEqual(len(initial_secrets), 1)
         initial_env = self.harness.get_container_pebble_plan("jimm").services[JIMM_SERVICE_NAME].environment
-        self.assertEqual(json.loads(initial_env["JIMM_JWKS"]), {"keys": [TEST_JWKS_PUBLIC_1]})
-        self.assertEqual(initial_env["JIMM_JWKS_PRIVATE_KEY"], TEST_JWKS_PRIVATE_KEY_1)
+        self.assertEqual(initial_env["JIMM_JWKS_PATH"], str(JWKS_PATH))
+        self.assertEqual(initial_env["JIMM_JWKS_PRIVATE_KEY_PATH"], str(JWKS_PRIVATE_KEY_PATH))
+        self.assertEqual(json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_1]})
+        self.assertEqual(self.read_workload_file(JWKS_PRIVATE_KEY_PATH), TEST_JWKS_PRIVATE_KEY_1)
 
         publish_time = base_time + JWKS_ROTATION_PERIOD - JWKS_PRE_ROTATION_INTERVAL
         with mock.patch.object(JimmOperatorCharm, "_now", return_value=publish_time):
             self.harness.charm.on.update_status.emit()
 
-        published_env = self.harness.get_container_pebble_plan("jimm").services[JIMM_SERVICE_NAME].environment
-        self.assertEqual(json.loads(published_env["JIMM_JWKS"]), {"keys": [TEST_JWKS_PUBLIC_1, TEST_JWKS_PUBLIC_2]})
-        self.assertEqual(published_env["JIMM_JWKS_PRIVATE_KEY"], TEST_JWKS_PRIVATE_KEY_1)
+        published_secrets = self.existing_jwks_secrets()
+        self.assertEqual(len(published_secrets), 2)
+        published_secret_ids = {label: self.secret_identity(secret) for label, secret in published_secrets.items()}
+        self.assertEqual(json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_1, TEST_JWKS_PUBLIC_2]})
+        self.assertEqual(self.read_workload_file(JWKS_PRIVATE_KEY_PATH), TEST_JWKS_PRIVATE_KEY_1)
 
         switch_time = publish_time + JWKS_PROPAGATION_DELAY
         with mock.patch.object(JimmOperatorCharm, "_now", return_value=switch_time):
             self.harness.charm.on.update_status.emit()
 
-        switched_env = self.harness.get_container_pebble_plan("jimm").services[JIMM_SERVICE_NAME].environment
-        self.assertEqual(json.loads(switched_env["JIMM_JWKS"]), {"keys": [TEST_JWKS_PUBLIC_1, TEST_JWKS_PUBLIC_2]})
-        self.assertEqual(switched_env["JIMM_JWKS_PRIVATE_KEY"], TEST_JWKS_PRIVATE_KEY_2)
+        self.assertEqual(json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_1, TEST_JWKS_PUBLIC_2]})
+        self.assertEqual(self.read_workload_file(JWKS_PRIVATE_KEY_PATH), TEST_JWKS_PRIVATE_KEY_2)
 
         cleanup_time = base_time + JWKS_ROTATION_PERIOD + timedelta(minutes=1)
         with mock.patch.object(JimmOperatorCharm, "_now", return_value=cleanup_time):
             self.harness.charm.on.update_status.emit()
 
-        cleaned_env = self.harness.get_container_pebble_plan("jimm").services[JIMM_SERVICE_NAME].environment
-        self.assertEqual(json.loads(cleaned_env["JIMM_JWKS"]), {"keys": [TEST_JWKS_PUBLIC_2]})
-        self.assertEqual(cleaned_env["JIMM_JWKS_PRIVATE_KEY"], TEST_JWKS_PRIVATE_KEY_2)
-        self.assertEqual(len(self.harness.charm._state.jwks_secret_ids), 1)
-        with self.assertRaises(SecretNotFoundError):
-            self.harness.model.get_secret(id=retired_secret_id)
+        cleaned_secrets = self.existing_jwks_secrets()
+        self.assertEqual(
+            {label: self.secret_identity(secret) for label, secret in cleaned_secrets.items()},
+            published_secret_ids,
+        )
+        self.assertEqual(json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_2]})
+        self.assertEqual(self.read_workload_file(JWKS_PRIVATE_KEY_PATH), TEST_JWKS_PRIVATE_KEY_2)
+        self.assertEqual(len(cleaned_secrets), 2)
+
+    def test_jwks_rotation_reuses_two_constant_secrets(self):
+        base_time = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        with mock.patch.object(JimmOperatorCharm, "_now", return_value=base_time):
+            self.start_minimal_jimm(
+                jwks_materials=[
+                    (TEST_JWKS_PUBLIC_1, TEST_JWKS_PRIVATE_KEY_1),
+                    (TEST_JWKS_PUBLIC_2, TEST_JWKS_PRIVATE_KEY_2),
+                    (TEST_JWKS_PUBLIC_3, TEST_JWKS_PRIVATE_KEY_3),
+                ]
+            )
+
+        first_slot_label = next(iter(self.existing_jwks_secrets()))
+        first_slot_id = self.secret_identity(self.existing_jwks_secrets()[first_slot_label])
+
+        first_publish_time = base_time + JWKS_ROTATION_PERIOD - JWKS_PRE_ROTATION_INTERVAL
+        with mock.patch.object(JimmOperatorCharm, "_now", return_value=first_publish_time):
+            self.harness.charm.on.update_status.emit()
+
+        published_secrets = self.existing_jwks_secrets()
+        self.assertEqual(len(published_secrets), 2)
+        second_slot_label = next(label for label in published_secrets if label != first_slot_label)
+        second_slot_id = self.secret_identity(published_secrets[second_slot_label])
+
+        second_publish_time = first_publish_time + JWKS_PROPAGATION_DELAY + JWKS_ROTATION_PERIOD - JWKS_PRE_ROTATION_INTERVAL
+        with mock.patch.object(JimmOperatorCharm, "_now", return_value=second_publish_time):
+            self.harness.charm.on.update_status.emit()
+
+        rotated_secrets = self.existing_jwks_secrets()
+        self.assertEqual(self.secret_identity(rotated_secrets[first_slot_label]), first_slot_id)
+        self.assertEqual(self.secret_identity(rotated_secrets[second_slot_label]), second_slot_id)
+        first_slot_content = rotated_secrets[first_slot_label].get_content(refresh=True)
+        self.assertEqual(first_slot_content[JWKS_KID_LOOKUP], TEST_JWKS_PUBLIC_3["kid"])
+
+        self.assertEqual(json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_2, TEST_JWKS_PUBLIC_3]})
+        self.assertEqual(self.read_workload_file(JWKS_PRIVATE_KEY_PATH), TEST_JWKS_PRIVATE_KEY_2)
 
     def test_jwks_rotation_does_not_create_multiple_future_keys(self):
         base_time = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -868,24 +937,27 @@ class TestCharm(TestCase):
                 ]
             )
 
-        published_env = self.harness.get_container_pebble_plan("jimm").services[JIMM_SERVICE_NAME].environment
-        self.assertEqual(len(self.harness.charm._state.jwks_secret_ids), 1)
+        self.assertEqual(len(self.existing_jwks_secrets()), 1)
 
         publish_time = base_time + JWKS_ROTATION_PERIOD - JWKS_PRE_ROTATION_INTERVAL
         with mock.patch.object(JimmOperatorCharm, "_now", return_value=publish_time):
             self.harness.charm.on.update_status.emit()
 
-        published_env = self.harness.get_container_pebble_plan("jimm").services[JIMM_SERVICE_NAME].environment
-        self.assertEqual(len(self.harness.charm._state.jwks_secret_ids), 2)
+        published_secret_ids = {
+            label: self.secret_identity(secret) for label, secret in self.existing_jwks_secrets().items()
+        }
+        self.assertEqual(len(published_secret_ids), 2)
 
         before_activation_time = publish_time + JWKS_PROPAGATION_DELAY - timedelta(minutes=1)
         with mock.patch.object(JimmOperatorCharm, "_now", return_value=before_activation_time):
             self.harness.charm.on.update_status.emit()
 
-        published_env = self.harness.get_container_pebble_plan("jimm").services[JIMM_SERVICE_NAME].environment
-        self.assertEqual(len(self.harness.charm._state.jwks_secret_ids), 2)
-        self.assertEqual(json.loads(published_env["JIMM_JWKS"]), {"keys": [TEST_JWKS_PUBLIC_1, TEST_JWKS_PUBLIC_2]})
-        self.assertEqual(published_env["JIMM_JWKS_PRIVATE_KEY"], TEST_JWKS_PRIVATE_KEY_1)
+        self.assertEqual(
+            {label: self.secret_identity(secret) for label, secret in self.existing_jwks_secrets().items()},
+            published_secret_ids,
+        )
+        self.assertEqual(json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_1, TEST_JWKS_PUBLIC_2]})
+        self.assertEqual(self.read_workload_file(JWKS_PRIVATE_KEY_PATH), TEST_JWKS_PRIVATE_KEY_1)
 
     def test_default_host_key_is_valid(self):
         self.start_minimal_jimm()
