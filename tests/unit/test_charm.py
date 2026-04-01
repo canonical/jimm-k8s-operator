@@ -25,8 +25,8 @@ from src.charm import (
     JWKS_KID_LOOKUP,
     JWKS_PATH,
     JWKS_PRE_ROTATION_INTERVAL,
-    JWKS_PRIVATE_KEY_PATH,
     JWKS_PRIVATE_KEY_LOOKUP,
+    JWKS_PRIVATE_KEY_PATH,
     JWKS_PROPAGATION_DELAY,
     JWKS_PUBLIC_JWK_LOOKUP,
     JWKS_ROTATION_PERIOD,
@@ -868,14 +868,18 @@ class TestCharm(TestCase):
         published_secrets = self.existing_jwks_secrets()
         self.assertEqual(len(published_secrets), 2)
         published_secret_ids = {label: self.secret_identity(secret) for label, secret in published_secrets.items()}
-        self.assertEqual(json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_1, TEST_JWKS_PUBLIC_2]})
+        self.assertEqual(
+            json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_1, TEST_JWKS_PUBLIC_2]}
+        )
         self.assertEqual(self.read_workload_file(JWKS_PRIVATE_KEY_PATH), TEST_JWKS_PRIVATE_KEY_1)
 
         switch_time = publish_time + JWKS_PROPAGATION_DELAY
         with mock.patch.object(JimmOperatorCharm, "_now", return_value=switch_time):
             self.harness.charm.on.update_status.emit()
 
-        self.assertEqual(json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_1, TEST_JWKS_PUBLIC_2]})
+        self.assertEqual(
+            json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_1, TEST_JWKS_PUBLIC_2]}
+        )
         self.assertEqual(self.read_workload_file(JWKS_PRIVATE_KEY_PATH), TEST_JWKS_PRIVATE_KEY_2)
 
         cleanup_time = base_time + JWKS_ROTATION_PERIOD + timedelta(minutes=1)
@@ -914,7 +918,9 @@ class TestCharm(TestCase):
         second_slot_label = next(label for label in published_secrets if label != first_slot_label)
         second_slot_id = self.secret_identity(published_secrets[second_slot_label])
 
-        second_publish_time = first_publish_time + JWKS_PROPAGATION_DELAY + JWKS_ROTATION_PERIOD - JWKS_PRE_ROTATION_INTERVAL
+        second_publish_time = (
+            first_publish_time + JWKS_PROPAGATION_DELAY + JWKS_ROTATION_PERIOD - JWKS_PRE_ROTATION_INTERVAL
+        )
         with mock.patch.object(JimmOperatorCharm, "_now", return_value=second_publish_time):
             self.harness.charm.on.update_status.emit()
 
@@ -924,7 +930,9 @@ class TestCharm(TestCase):
         first_slot_content = rotated_secrets[first_slot_label].get_content(refresh=True)
         self.assertEqual(first_slot_content[JWKS_KID_LOOKUP], TEST_JWKS_PUBLIC_3["kid"])
 
-        self.assertEqual(json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_2, TEST_JWKS_PUBLIC_3]})
+        self.assertEqual(
+            json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_2, TEST_JWKS_PUBLIC_3]}
+        )
         self.assertEqual(self.read_workload_file(JWKS_PRIVATE_KEY_PATH), TEST_JWKS_PRIVATE_KEY_2)
 
     def test_jwks_rotation_does_not_create_multiple_future_keys(self):
@@ -956,7 +964,9 @@ class TestCharm(TestCase):
             {label: self.secret_identity(secret) for label, secret in self.existing_jwks_secrets().items()},
             published_secret_ids,
         )
-        self.assertEqual(json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_1, TEST_JWKS_PUBLIC_2]})
+        self.assertEqual(
+            json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_1, TEST_JWKS_PUBLIC_2]}
+        )
         self.assertEqual(self.read_workload_file(JWKS_PRIVATE_KEY_PATH), TEST_JWKS_PRIVATE_KEY_1)
 
     def test_default_host_key_is_valid(self):

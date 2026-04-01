@@ -1052,7 +1052,7 @@ class JimmOperatorCharm(CharmBase):
             subnets.append(str(binding.network.interfaces[0].subnet))
             return subnets
         raise ValueError("unknown egress subnet")
-    
+
     def _on_secret_remove(self, event: SecretRemoveEvent):
         # All observers are done with this revision, remove it:
         event.remove_revision()
@@ -1100,7 +1100,7 @@ class JimmOperatorCharm(CharmBase):
         that key becomes the active signer while older public keys may still be
         advertised. Third, once a newer key is active, older public keys remain
         published until their original expiry time so recently issued tokens can still
-        be validated. Finally, once a key expires, it is not advertised and it slot 
+        be validated. Finally, once a key expires, it is not advertised and it slot
         becomes eligible for reuse by the next rotation.
         """
         now = self._now()
