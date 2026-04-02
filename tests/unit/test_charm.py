@@ -14,6 +14,8 @@ from datetime import datetime, timedelta, timezone
 from unittest import TestCase, mock
 
 import ops
+from jose.backends.cryptography_backend import CryptographyRSAKey
+from jose.constants import Algorithms
 from ops.model import ActiveStatus, BlockedStatus, SecretNotFoundError, WaitingStatus
 from ops.testing import ActionFailed, Harness
 
@@ -37,6 +39,7 @@ from src.charm import (
     JimmOperatorCharm,
     is_valid_private_key,
     new_host_key,
+    new_jwks_secret,
     new_session_key,
 )
 
@@ -218,9 +221,8 @@ class TestCharm(TestCase):
         materials = jwks_materials or [(TEST_JWKS_PUBLIC_1, TEST_JWKS_PRIVATE_KEY_1)]
         iterator = iter(materials)
 
-        def fake_new_jwks_secret(activate_at):
+        def fake_new_jwks_secret(activate_at, expires_at):
             public_jwk, private_key = next(iterator)
-            expires_at = activate_at + JWKS_ROTATION_PERIOD
             return {
                 JWKS_ACTIVATE_AT_LOOKUP: _format_test_datetime(activate_at),
                 JWKS_EXPIRES_AT_LOOKUP: _format_test_datetime(expires_at),
@@ -825,6 +827,44 @@ class TestCharm(TestCase):
     def test_session_secret_length(self):
         secret_dict = new_session_key()
         self.assertTrue(len(secret_dict[SESSION_KEY_LOOKUP]) >= 64)
+
+    def test_new_jwks_secret_returns_consistent_key_material(self):
+        activate_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        expires_at = activate_at + timedelta(days=1)
+
+        secret_dict = new_jwks_secret(activate_at, expires_at)
+
+        self.assertEqual(
+            set(secret_dict),
+            {
+                JWKS_ACTIVATE_AT_LOOKUP,
+                JWKS_EXPIRES_AT_LOOKUP,
+                JWKS_KID_LOOKUP,
+                JWKS_PRIVATE_KEY_LOOKUP,
+                JWKS_PUBLIC_JWK_LOOKUP,
+            },
+        )
+        self.assertEqual(secret_dict[JWKS_ACTIVATE_AT_LOOKUP], activate_at.isoformat())
+        self.assertEqual(secret_dict[JWKS_EXPIRES_AT_LOOKUP], expires_at.isoformat())
+        self.assertTrue(is_valid_private_key(secret_dict[JWKS_PRIVATE_KEY_LOOKUP]))
+
+        public_jwk = json.loads(secret_dict[JWKS_PUBLIC_JWK_LOOKUP])
+        self.assertEqual(public_jwk["alg"], "RS256")
+        self.assertEqual(public_jwk["kid"], secret_dict[JWKS_KID_LOOKUP])
+        self.assertEqual(public_jwk["use"], "sig")
+
+        derived_public_jwk = (
+            CryptographyRSAKey(secret_dict[JWKS_PRIVATE_KEY_LOOKUP].encode(), Algorithms.RS256).public_key().to_dict()
+        )
+        self.assertDictEqual(
+            public_jwk,
+            derived_public_jwk
+            | {
+                "alg": "RS256",
+                "kid": secret_dict[JWKS_KID_LOOKUP],
+                "use": "sig",
+            },
+        )
 
     def test_rotate_session_key_action(self):
         # Stop the fake session secret patcher to test the secret rotation.

@@ -1109,7 +1109,9 @@ class JimmOperatorCharm(CharmBase):
 
         if not live:
             # Seed the very first signing key immediately so the workload can start.
-            self._write_jwks_secret(self._next_jwks_slot_label(existing), new_jwks_secret(now))
+            activate_at = now
+            expires_at = now + JWKS_ROTATION_PERIOD
+            self._write_jwks_secret(self._next_jwks_slot_label(existing), new_jwks_secret(activate_at, expires_at))
             return
 
         latest = max(live, key=lambda secret: secret.activate_at)
@@ -1117,10 +1119,11 @@ class JimmOperatorCharm(CharmBase):
 
         pre_rotation_starts_at = latest.expires_at - JWKS_PRE_ROTATION_INTERVAL
         if now >= pre_rotation_starts_at and not future:
-            # Prepublish the next key, ensuring we wait >> the advertised cache
+            # Prepublish the next key, ensuring we wait >> JIMM's HTTP cache duration
             # duration before allowing it to become the active signing key.
             activate_at = now + JWKS_PROPAGATION_DELAY
-            self._write_jwks_secret(self._next_jwks_slot_label(live), new_jwks_secret(activate_at))
+            expires_at = now + JWKS_ROTATION_PERIOD
+            self._write_jwks_secret(self._next_jwks_slot_label(live), new_jwks_secret(activate_at, expires_at))
 
     def _next_jwks_slot_label(self, secrets: list[JWKSSecret]) -> str:
         if not secrets:
@@ -1184,7 +1187,7 @@ def new_host_key():
     return {HOST_KEY_LOOKUP: generate_private_key(key_size=4096).decode()}
 
 
-def new_jwks_secret(activate_at: datetime) -> dict[str, str]:
+def new_jwks_secret(activate_at: datetime, expires_at: datetime) -> dict[str, str]:
     # Each Juju secret stores one signing key plus its activate/expiry timestamps.
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=4096)
     private_pem = private_key.private_bytes(
@@ -1195,7 +1198,6 @@ def new_jwks_secret(activate_at: datetime) -> dict[str, str]:
     public_jwk = CryptographyRSAKey(private_pem.encode(), Algorithms.RS256).public_key().to_dict()
     kid = str(uuid4())
     public_jwk.update({"alg": "RS256", "kid": kid, "use": "sig"})
-    expires_at = activate_at + JWKS_ROTATION_PERIOD
     return {
         JWKS_ACTIVATE_AT_LOOKUP: activate_at.isoformat(),
         JWKS_EXPIRES_AT_LOOKUP: expires_at.isoformat(),
