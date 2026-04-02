@@ -1130,16 +1130,13 @@ class JimmOperatorCharm(CharmBase):
             return JWKS_SECRET_LABELS[1]
         return JWKS_SECRET_LABELS[0]
 
-    def _write_jwks_secret(self, label: str, content: dict[str, str]) -> Secret:
+    def _write_jwks_secret(self, label: str, content: dict[str, str]):
         try:
             secret = self.model.get_secret(label=label)
         except SecretNotFoundError:
             return self.app.add_secret(content, label=label)
 
-        # Update then get the secret so that its contents reflect the change.
         secret.set_content(content)
-        secret.get_content(refresh=True)
-        return secret
 
     def _load_jwks_secrets(self, refresh: bool) -> list[JWKSSecret]:
         secrets: list[JWKSSecret] = []

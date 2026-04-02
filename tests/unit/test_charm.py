@@ -844,6 +844,10 @@ class TestCharm(TestCase):
         self.assertNotEqual(old_session_secret, new_session_secret)
 
     def test_jwks_rotation_lifecycle(self):
+        """
+        Test the full lifecycle of JWKS rotation. We intentionally go through 2 rotation
+        cycles (i.e. 3 keys) to confirm that the charm correctly re-uses secrets.
+        """
         base_time = datetime(2026, 1, 1, tzinfo=timezone.utc)
         # Seed the first secret and verify the workload starts by publishing only the initial key.
         with mock.patch.object(JimmOperatorCharm, "_now", return_value=base_time):
