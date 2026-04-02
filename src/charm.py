@@ -132,14 +132,14 @@ JWKS_EXPIRES_AT_LOOKUP = "expiresat"
 #     |              |              |               |
 # ----o--------------o--------------o---------------o------> Time
 #     ^              ^              ^               ^
-#    T=0          T=day 83     T=day 83 + 1h     T=day 90
+#    T=0          T=day 83     T=day 83 + 6h     T=day 90
 
 # How long one signing key remains valid.
 JWKS_ROTATION_PERIOD = timedelta(days=90)
 # How far ahead of expiry the next public key is published for controllers to fetch.
 JWKS_PRE_ROTATION_INTERVAL = timedelta(days=7)
 # Delay between publishing a new public key and using its private key for signing.
-JWKS_PROPAGATION_DELAY = timedelta(hours=1)
+JWKS_PROPAGATION_DELAY = timedelta(hours=6)
 CERTIFICATE_TRANSFER_INTEGRATION_NAME = "receive-ca-cert"
 
 
@@ -1136,6 +1136,7 @@ class JimmOperatorCharm(CharmBase):
         except SecretNotFoundError:
             return self.app.add_secret(content, label=label)
 
+        # Update then get the secret so that its contents reflect the change.
         secret.set_content(content)
         secret.get_content(refresh=True)
         return secret
