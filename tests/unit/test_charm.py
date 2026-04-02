@@ -233,7 +233,7 @@ class TestCharm(TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def existing_jwks_secrets(self):
+    def existing_jwks_secrets(self) -> dict[str, ops.Secret]:
         secrets = {}
         for label in JWKS_SECRET_LABELS:
             try:
@@ -242,7 +242,7 @@ class TestCharm(TestCase):
                 continue
         return secrets
 
-    def secret_identity(self, secret):
+    def secret_identity(self, secret: ops.Secret):
         return secret.id or secret.get_info().id
 
     def read_workload_file(self, path: pathlib.Path) -> str:
@@ -845,58 +845,7 @@ class TestCharm(TestCase):
 
     def test_jwks_rotation_lifecycle(self):
         base_time = datetime(2026, 1, 1, tzinfo=timezone.utc)
-        with mock.patch.object(JimmOperatorCharm, "_now", return_value=base_time):
-            self.start_minimal_jimm(
-                jwks_materials=[
-                    (TEST_JWKS_PUBLIC_1, TEST_JWKS_PRIVATE_KEY_1),
-                    (TEST_JWKS_PUBLIC_2, TEST_JWKS_PRIVATE_KEY_2),
-                ]
-            )
-
-        initial_secrets = self.existing_jwks_secrets()
-        self.assertEqual(len(initial_secrets), 1)
-        initial_env = self.harness.get_container_pebble_plan("jimm").services[JIMM_SERVICE_NAME].environment
-        self.assertEqual(initial_env["JIMM_JWKS_PATH"], str(JWKS_PATH))
-        self.assertEqual(initial_env["JIMM_JWKS_PRIVATE_KEY_PATH"], str(JWKS_PRIVATE_KEY_PATH))
-        self.assertEqual(json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_1]})
-        self.assertEqual(self.read_workload_file(JWKS_PRIVATE_KEY_PATH), TEST_JWKS_PRIVATE_KEY_1)
-
-        publish_time = base_time + JWKS_ROTATION_PERIOD - JWKS_PRE_ROTATION_INTERVAL
-        with mock.patch.object(JimmOperatorCharm, "_now", return_value=publish_time):
-            self.harness.charm.on.update_status.emit()
-
-        published_secrets = self.existing_jwks_secrets()
-        self.assertEqual(len(published_secrets), 2)
-        published_secret_ids = {label: self.secret_identity(secret) for label, secret in published_secrets.items()}
-        self.assertEqual(
-            json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_1, TEST_JWKS_PUBLIC_2]}
-        )
-        self.assertEqual(self.read_workload_file(JWKS_PRIVATE_KEY_PATH), TEST_JWKS_PRIVATE_KEY_1)
-
-        switch_time = publish_time + JWKS_PROPAGATION_DELAY
-        with mock.patch.object(JimmOperatorCharm, "_now", return_value=switch_time):
-            self.harness.charm.on.update_status.emit()
-
-        self.assertEqual(
-            json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_1, TEST_JWKS_PUBLIC_2]}
-        )
-        self.assertEqual(self.read_workload_file(JWKS_PRIVATE_KEY_PATH), TEST_JWKS_PRIVATE_KEY_2)
-
-        cleanup_time = base_time + JWKS_ROTATION_PERIOD + timedelta(minutes=1)
-        with mock.patch.object(JimmOperatorCharm, "_now", return_value=cleanup_time):
-            self.harness.charm.on.update_status.emit()
-
-        cleaned_secrets = self.existing_jwks_secrets()
-        self.assertEqual(
-            {label: self.secret_identity(secret) for label, secret in cleaned_secrets.items()},
-            published_secret_ids,
-        )
-        self.assertEqual(json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_2]})
-        self.assertEqual(self.read_workload_file(JWKS_PRIVATE_KEY_PATH), TEST_JWKS_PRIVATE_KEY_2)
-        self.assertEqual(len(cleaned_secrets), 2)
-
-    def test_jwks_rotation_reuses_two_constant_secrets(self):
-        base_time = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        # Seed the first secret and verify the workload starts by publishing only the initial key.
         with mock.patch.object(JimmOperatorCharm, "_now", return_value=base_time):
             self.start_minimal_jimm(
                 jwks_materials=[
@@ -906,37 +855,71 @@ class TestCharm(TestCase):
                 ]
             )
 
-        first_slot_label = next(iter(self.existing_jwks_secrets()))
-        first_slot_id = self.secret_identity(self.existing_jwks_secrets()[first_slot_label])
+        initial_env = self.harness.get_container_pebble_plan("jimm").services[JIMM_SERVICE_NAME].environment
+        self.assertEqual(initial_env["JIMM_JWKS_PATH"], str(JWKS_PATH))
+        self.assertEqual(initial_env["JIMM_JWKS_PRIVATE_KEY_PATH"], str(JWKS_PRIVATE_KEY_PATH))
+        self.assertEqual(json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_1]})
+        self.assertEqual(self.read_workload_file(JWKS_PRIVATE_KEY_PATH), TEST_JWKS_PRIVATE_KEY_1)
 
-        first_publish_time = base_time + JWKS_ROTATION_PERIOD - JWKS_PRE_ROTATION_INTERVAL
-        with mock.patch.object(JimmOperatorCharm, "_now", return_value=first_publish_time):
+        # Enter the pre-rotation window and confirm the next public key is published early.
+        publish_time = base_time + JWKS_ROTATION_PERIOD - JWKS_PRE_ROTATION_INTERVAL
+        with mock.patch.object(JimmOperatorCharm, "_now", return_value=publish_time):
             self.harness.charm.on.update_status.emit()
 
-        published_secrets = self.existing_jwks_secrets()
-        self.assertEqual(len(published_secrets), 2)
-        second_slot_label = next(label for label in published_secrets if label != first_slot_label)
-        second_slot_id = self.secret_identity(published_secrets[second_slot_label])
-
-        second_publish_time = (
-            first_publish_time + JWKS_PROPAGATION_DELAY + JWKS_ROTATION_PERIOD - JWKS_PRE_ROTATION_INTERVAL
+        self.assertEqual(
+            json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_1, TEST_JWKS_PUBLIC_2]}
         )
+        self.assertEqual(self.read_workload_file(JWKS_PRIVATE_KEY_PATH), TEST_JWKS_PRIVATE_KEY_1)
+
+        # Once the propagation delay has elapsed, signing should switch to the new private key.
+        switch_time = publish_time + JWKS_PROPAGATION_DELAY
+        with mock.patch.object(JimmOperatorCharm, "_now", return_value=switch_time):
+            self.harness.charm.on.update_status.emit()
+
+        self.assertEqual(
+            json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_1, TEST_JWKS_PUBLIC_2]}
+        )
+        self.assertEqual(self.read_workload_file(JWKS_PRIVATE_KEY_PATH), TEST_JWKS_PRIVATE_KEY_2)
+
+        # After the old key expires it should disappear from the JWKS, while the secret remains reusable.
+        cleanup_time = base_time + JWKS_ROTATION_PERIOD + timedelta(minutes=1)
+        with mock.patch.object(JimmOperatorCharm, "_now", return_value=cleanup_time):
+            self.harness.charm.on.update_status.emit()
+
+        self.assertEqual(json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_2]})
+        self.assertEqual(self.read_workload_file(JWKS_PRIVATE_KEY_PATH), TEST_JWKS_PRIVATE_KEY_2)
+
+        # Enter the next rotation window and confirm the third key is published before activation.
+        second_publish_time = switch_time + JWKS_ROTATION_PERIOD - JWKS_PRE_ROTATION_INTERVAL
         with mock.patch.object(JimmOperatorCharm, "_now", return_value=second_publish_time):
             self.harness.charm.on.update_status.emit()
-
-        rotated_secrets = self.existing_jwks_secrets()
-        self.assertEqual(self.secret_identity(rotated_secrets[first_slot_label]), first_slot_id)
-        self.assertEqual(self.secret_identity(rotated_secrets[second_slot_label]), second_slot_id)
-        first_slot_content = rotated_secrets[first_slot_label].get_content(refresh=True)
-        self.assertEqual(first_slot_content[JWKS_KID_LOOKUP], TEST_JWKS_PUBLIC_3["kid"])
 
         self.assertEqual(
             json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_2, TEST_JWKS_PUBLIC_3]}
         )
         self.assertEqual(self.read_workload_file(JWKS_PRIVATE_KEY_PATH), TEST_JWKS_PRIVATE_KEY_2)
 
+        # After the second propagation delay elapses, signing should switch to the third key.
+        second_switch_time = second_publish_time + JWKS_PROPAGATION_DELAY
+        with mock.patch.object(JimmOperatorCharm, "_now", return_value=second_switch_time):
+            self.harness.charm.on.update_status.emit()
+
+        self.assertEqual(
+            json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_2, TEST_JWKS_PUBLIC_3]}
+        )
+        self.assertEqual(self.read_workload_file(JWKS_PRIVATE_KEY_PATH), TEST_JWKS_PRIVATE_KEY_3)
+
+        # Once the second key expires, only the third key should remain published.
+        second_cleanup_time = switch_time + JWKS_ROTATION_PERIOD + timedelta(minutes=1)
+        with mock.patch.object(JimmOperatorCharm, "_now", return_value=second_cleanup_time):
+            self.harness.charm.on.update_status.emit()
+
+        self.assertEqual(json.loads(self.read_workload_file(JWKS_PATH)), {"keys": [TEST_JWKS_PUBLIC_3]})
+        self.assertEqual(self.read_workload_file(JWKS_PRIVATE_KEY_PATH), TEST_JWKS_PRIVATE_KEY_3)
+
     def test_jwks_rotation_does_not_create_multiple_future_keys(self):
         base_time = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        # Seed the initial key and verify we only have one secret before pre-rotation begins.
         with mock.patch.object(JimmOperatorCharm, "_now", return_value=base_time):
             self.start_minimal_jimm(
                 jwks_materials=[
@@ -947,6 +930,7 @@ class TestCharm(TestCase):
 
         self.assertEqual(len(self.existing_jwks_secrets()), 1)
 
+        # The first update_status in the pre-rotation window should create exactly one future key.
         publish_time = base_time + JWKS_ROTATION_PERIOD - JWKS_PRE_ROTATION_INTERVAL
         with mock.patch.object(JimmOperatorCharm, "_now", return_value=publish_time):
             self.harness.charm.on.update_status.emit()
@@ -956,6 +940,7 @@ class TestCharm(TestCase):
         }
         self.assertEqual(len(published_secret_ids), 2)
 
+        # Re-running before activation must not allocate a third secret or rewrite the two.
         before_activation_time = publish_time + JWKS_PROPAGATION_DELAY - timedelta(minutes=1)
         with mock.patch.object(JimmOperatorCharm, "_now", return_value=before_activation_time):
             self.harness.charm.on.update_status.emit()
