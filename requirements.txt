@@ -34,7 +34,7 @@ pytest-interface-tester==3.4.1
 python-jose[cryptography]==3.5.0
 PyYAML==6.0.3
 referencing==0.37.0
-requests==2.32.5
+requests==2.33.0
 rpds-py==0.30.0
 rsa==4.9.1
 setuptools==82.0.1
