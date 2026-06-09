@@ -96,4 +96,4 @@ resources:
   jimm-image:
     type: oci-image
     description: OCI image for JIMM.
-    upstream-source: ghcr.io/canonical/jimm:v3.3.26
+    upstream-source: ghcr.io/canonical/jimm:v3.4.0
