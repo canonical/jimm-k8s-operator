@@ -1230,6 +1230,57 @@ class TestCharm(TestCase):
         self.assertIn("cert1", ca_bundle_content)
         self.assertIn("cert2", ca_bundle_content)
 
+    def add_tracing_relation(self, endpoint="http://tempo.localhost:2331"):
+        """Add a tracing relation with a simulated tempo endpoint."""
+        self.tracing_rel_id = self.harness.add_relation("tracing", "tempo-coordinator-k8s")
+        self.harness.add_relation_unit(self.tracing_rel_id, "tempo-coordinator-k8s/0")
+        self.harness.update_relation_data(
+            self.tracing_rel_id,
+            "tempo-coordinator-k8s",
+            {
+                "receivers": json.dumps(
+                    [
+                        {
+                            "protocol": {"name": "otlp_http", "type": "http"},
+                            "url": endpoint,
+                        }
+                    ]
+                )
+            },
+        )
+
+    def test_tracing_relation_adds_otel_env_vars(self):
+        self.start_minimal_jimm()
+
+        self.add_tracing_relation()
+
+        container = self.harness.model.unit.get_container("jimm")
+        self.harness.charm.on.jimm_pebble_ready.emit(container)
+
+        plan = self.harness.get_container_pebble_plan("jimm")
+        env = plan.to_dict().get("services", {}).get(JIMM_SERVICE_NAME, {}).get("environment", {})
+        self.assertEqual(env.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"), "http://tempo.localhost:2331")
+        self.assertEqual(env.get("OTEL_EXPORTER_OTLP_TRACES_PROTOCOL"), "http/protobuf")
+        self.assertEqual(env.get("OTEL_SERVICE_NAME"), "juju-jimm-k8s")
+        self.assertEqual(env.get("OTEL_TRACES_SAMPLE_RATIO"), "0.1")
+
+    def test_tracing_relation_does_not_add_otel_env_vars_when_not_ready(self):
+        self.start_minimal_jimm()
+
+        # Add tracing relation but without provider data
+        self.tracing_rel_id = self.harness.add_relation("tracing", "tempo-coordinator-k8s")
+        self.harness.add_relation_unit(self.tracing_rel_id, "tempo-coordinator-k8s/0")
+
+        container = self.harness.model.unit.get_container("jimm")
+        self.harness.charm.on.jimm_pebble_ready.emit(container)
+
+        plan = self.harness.get_container_pebble_plan("jimm")
+        env = plan.to_dict().get("services", {}).get(JIMM_SERVICE_NAME, {}).get("environment", {})
+        self.assertNotIn("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", env)
+        self.assertNotIn("OTEL_EXPORTER_OTLP_TRACES_PROTOCOL", env)
+        self.assertNotIn("OTEL_SERVICE_NAME", env)
+        self.assertNotIn("OTEL_TRACES_SAMPLE_RATIO", env)
+
 
 def _format_test_datetime(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")

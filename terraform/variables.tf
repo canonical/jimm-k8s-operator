@@ -145,3 +145,9 @@ variable "grafana_dashboard_consumer_offer_url" {
   type        = string
   default     = null
 }
+
+variable "tracing_consumer_offer_url" {
+  description = "Grafana Agent Tracing Consumer Offer URL"
+  type        = string
+  default     = null
+}

@@ -115,3 +115,10 @@ options:
   uuid:
     type: string
     description: The UUID advertised by the JIMM controller.
+  tracing-sample-ratio:
+    type: float
+    default: 0.1
+    description: |
+      The ratio of traces to sample and export to the tracing backend (Tempo).
+      Must be between 0.0 (no traces) and 1.0 (all traces).
+      Only effective when the tracing relation is active.

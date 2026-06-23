@@ -83,3 +83,32 @@ resource "juju_integration" "jimm_grafana_agent_dashboard" {
   }
   model_uuid = var.model_uuid
 }
+
+resource "juju_integration" "jimm_grafana_agent_tracing" {
+  count = var.tracing_consumer_offer_url != null ? 1 : 0
+
+  application {
+    name     = juju_application.jimm.name
+    endpoint = "tracing"
+  }
+
+  application {
+    name     = juju_application.grafana_agent[0].name
+    endpoint = "tracing-provider"
+  }
+  model_uuid = var.model_uuid
+}
+
+resource "juju_integration" "grafana_tracing_consumer" {
+  count = var.tracing_consumer_offer_url != null ? 1 : 0
+
+  application {
+    name     = juju_application.grafana_agent[0].name
+    endpoint = "tracing"
+  }
+
+  application {
+    offer_url = var.tracing_consumer_offer_url
+  }
+  model_uuid = var.model_uuid
+}

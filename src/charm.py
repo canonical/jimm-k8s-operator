@@ -29,6 +29,7 @@ from charms.loki_k8s.v1.loki_push_api import LogForwarder
 from charms.nginx_ingress_integrator.v0.nginx_route import require_nginx_route
 from charms.openfga_k8s.v1.openfga import OpenFGARequires, OpenFGAStoreCreateEvent
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
+from charms.tempo_coordinator_k8s.v0.tracing import TracingEndpointRequirer
 from charms.tls_certificates_interface.v1.tls_certificates import (
     CertificateAvailableEvent,
     CertificateExpiringEvent,
@@ -141,6 +142,7 @@ JWKS_PRE_ROTATION_INTERVAL = timedelta(days=7)
 # Delay between publishing a new public key and using its private key for signing.
 JWKS_PROPAGATION_DELAY = timedelta(hours=6)
 CERTIFICATE_TRANSFER_INTEGRATION_NAME = "receive-ca-cert"
+TRACING_RELATION_NAME = "tracing"
 
 
 class DeferError(Exception):
@@ -301,6 +303,21 @@ class JimmOperatorCharm(CharmBase):
 
         # Loki relation
         self._log_forwarder = LogForwarder(self, relation_name="logging")
+
+        # Tracing relation (Tempo)
+        self.tracing = TracingEndpointRequirer(
+            self,
+            relation_name=TRACING_RELATION_NAME,
+            protocols=["otlp_http"],
+        )
+        self.framework.observe(
+            self.tracing.on.endpoint_changed,
+            self._on_tracing_endpoint_changed,
+        )
+        self.framework.observe(
+            self.tracing.on.endpoint_removed,
+            self._on_tracing_endpoint_removed,
+        )
 
         # Prometheus relation
         self._prometheus_scraping = MetricsEndpointProvider(
@@ -531,6 +548,16 @@ class JimmOperatorCharm(CharmBase):
             "OPENFGA_STORE": openfga_info.store_id,
             "OPENFGA_TOKEN": openfga_info.token,
         }
+
+        # Add tracing endpoint if tracing relation is available
+        if self.tracing.is_ready():
+            otlp_endpoint = self.tracing.get_endpoint("otlp_http")
+            if otlp_endpoint:
+                config_values["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] = otlp_endpoint
+                config_values["OTEL_EXPORTER_OTLP_TRACES_PROTOCOL"] = "http/protobuf"
+                config_values["OTEL_SERVICE_NAME"] = self.app.name
+                config_values["OTEL_TRACES_SAMPLE_RATIO"] = str(self.config.get("tracing-sample-ratio"))
+
         if self.unit.is_leader():
             config_values["JIMM_IS_LEADER"] = "True"
 
@@ -1075,6 +1102,14 @@ class JimmOperatorCharm(CharmBase):
         self._update_workload(event)
 
     def _on_trusted_certificate_removed(self, event: CertificatesRemovedEvent) -> None:
+        self._update_workload(event)
+
+    def _on_tracing_endpoint_changed(self, event) -> None:
+        """Handle tracing endpoint changes from Tempo."""
+        self._update_workload(event)
+
+    def _on_tracing_endpoint_removed(self, event) -> None:
+        """Handle tracing endpoint removal."""
         self._update_workload(event)
 
     def _egress_subnets(self, binding: Binding | None) -> list[str]:
