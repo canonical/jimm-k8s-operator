@@ -1,10 +1,10 @@
-name: Release to v3/edge
+name: Release to v4/edge
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - v3
+      - v4
 
 # Note this workflow requires a Github secret to provide auth against charmhub.
 # This can be generated with the following command (ttl=6 months)
@@ -40,4 +40,4 @@ jobs:
         with:
           credentials: "${{ secrets.CHARMHUB_TOKEN }}"
           github-token: "${{ secrets.GITHUB_TOKEN }}"
-          channel: "3/edge"
+          channel: "4/edge"

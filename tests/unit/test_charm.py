@@ -696,6 +696,26 @@ class TestCharm(TestCase):
         )
         self.assertEqual(data["is-juju"], "False")
 
+    def test_dashboard_relation_joined_with_scheme(self):
+        self.start_minimal_jimm()
+
+        with mock.patch.object(
+            type(self.harness.charm.ingress),
+            "url",
+            new_callable=mock.PropertyMock,
+            return_value="https://jimm.workshop/jimm-jimm",
+        ):
+            id = self.harness.add_relation("dashboard", "juju-dashboard")
+            self.harness.add_relation_unit(id, "juju-dashboard/0")
+            data = self.harness.get_relation_data(id, "juju-jimm-k8s")
+
+            self.assertTrue(data)
+            self.assertEqual(
+                data["controller-url"],
+                "wss://jimm.workshop/jimm-jimm",
+            )
+            self.assertEqual(data["is-juju"], "False")
+
     def test_vault_relation_joined(self):
         self.start_minimal_jimm()
 

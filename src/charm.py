@@ -11,7 +11,7 @@ from base64 import b64encode
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlunparse
 from uuid import uuid4
 
 from charms.certificate_transfer_interface.v1.certificate_transfer import (
@@ -625,7 +625,7 @@ class JimmOperatorCharm(CharmBase):
         if dashboard_relation and self.unit.is_leader():
             dashboard_relation.data[self.app].update(
                 {
-                    "controller-url": "wss://{}".format(dns_name),
+                    "controller-url": self._controller_url(dns_name),
                     "is-juju": str(False),
                 }
             )
@@ -736,10 +736,24 @@ class JimmOperatorCharm(CharmBase):
 
         event.relation.data[self.app].update(
             {
-                "controller-url": "wss://{}".format(dns_name),
+                "controller-url": self._controller_url(dns_name),
                 "is-juju": str(False),
             }
         )
+
+    def _controller_url(self, dns_name: str) -> str:
+        parsed = urlparse(dns_name)
+        if not parsed.scheme:
+            return f"wss://{dns_name}"
+
+        websocket_scheme = {
+            "http": "ws",
+            "https": "wss",
+            "ws": "ws",
+            "wss": "wss",
+        }.get(parsed.scheme, "wss")
+
+        return urlunparse(parsed._replace(scheme=websocket_scheme))
 
     @requires_state_setter
     def _on_database_event(self, event: DatabaseRequiresEvent) -> None:
