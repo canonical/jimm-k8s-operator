@@ -24,7 +24,7 @@ ops-scenario==8.6.0
 packaging==26.0
 pbr==7.0.3
 pluggy==1.6.0
-pyasn1==0.6.3
+pyasn1==0.6.4
 pycparser==2.22
 pydantic==2.12.5
 pydantic_core==2.41.5
