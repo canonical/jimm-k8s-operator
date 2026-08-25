@@ -62,7 +62,7 @@ jobs:
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"/Ruby
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"/Java_Temurin-Hotspot_jdk
       - name: Checkout
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Setup operator environment
         uses: charmed-kubernetes/actions-operator@main
         with:
@@ -84,7 +84,7 @@ jobs:
           echo "$REGISTRY_CONFIG" | sudo tee -a /var/snap/microk8s/current/args/containerd-template.toml
           sudo snap restart microk8s.daemon-containerd
       # Download the charm from the build to speed up integration tests.
-      - uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: jimm-k8s-charm
       - name: Install tox
@@ -93,4 +93,4 @@ jobs:
         run: tox -e integration -- --localCharm
       - name: Dump logs
         if: failure()
-        uses: canonical/charming-actions/dump-logs@934193396735701141a1decc3613818e412da606 # main
+        uses: canonical/charming-actions/dump-logs@9180b22741d2349858e35e1dcc2fe4e11c3ebf2d # main
