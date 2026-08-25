@@ -11,40 +11,18 @@
       ":semanticCommitScope(deps)",
       "helpers:pinGitHubActionDigests"
     ],
-    "schedule": ["* * 1 * *"], 
+    "schedule": ["0 0 1 * *"],
     "automergeType": "pr",
     "rebaseWhen": "behind-base-branch",
     "packageRules": [
       {
-        "groupName": "github actions",
-        "matchManagers": ["github-actions"],
-        "matchUpdateTypes": ["major", "minor", "patch", "pin", "digest"],
-        "additionalBranchPrefix": "auto-"
-      },
-      {
-        "groupName": "operator pip deps (minor changes)",
-        "matchManagers": ["pip_requirements"],
-        "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
-        "prPriority": 5,
+        "groupName": "dependency updates",
         "additionalBranchPrefix": "auto-"
       },
       {
         "groupName": "operator pip deps (major changes)",
         "matchManagers": ["pip_requirements"],
-        "matchUpdateTypes": ["major"],
-        "prPriority": 5
-      },
-      {
-        "groupName": "testing deps",
-        "matchFiles": ["tox.ini"],
-        "matchUpdateTypes": ["major", "minor", "patch", "pin", "digest"],
-        "additionalBranchPrefix": "auto-"
-      },
-      {
-        "groupName": "renovate packages",
-        "matchSourceUrlPrefixes": ["https://github.com/renovatebot/"],
-        "matchUpdateTypes": ["major", "minor", "patch", "pin", "digest"],
-        "additionalBranchPrefix": "auto-"
+        "matchUpdateTypes": ["major"]
       }
     ]
   }
