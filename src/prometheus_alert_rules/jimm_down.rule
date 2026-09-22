@@ -1,0 +1,9 @@
+alert: JimmDown
+expr: up{juju_charm=~"juju-jimm-k8s|jimm"} == 0
+for: 5m
+labels:
+  severity: Critical
+annotations:
+  summary: JIMM is down ({{ $labels.juju_unit }}).
+  description: >-
+    Prometheus has been unable to scrape JIMM's /metrics endpoint for 5 minutes.
