@@ -28,21 +28,18 @@
                 "uid": "${lokids}"
             },
             "gridPos": {
-                "h": 13,
+                "h": 7,
                 "w": 24,
                 "x": 0,
                 "y": 0
             },
-            "id": 1,
+            "id": 2,
             "options": {
-                "dedupStrategy": "none",
-                "enableLogDetails": true,
-                "prettifyLogMessage": false,
-                "showCommonLabels": false,
-                "showLabels": false,
-                "showTime": false,
-                "sortOrder": "Descending",
-                "wrapLogMessage": false
+                "legend": {
+                    "displayMode": "list",
+                    "placement": "bottom",
+                    "showLegend": true
+                }
             },
             "targets": [
                 {
@@ -50,13 +47,50 @@
                         "type": "loki",
                         "uid": "${lokids}"
                     },
-                    "editorMode": "builder",
-                    "expr": "{juju_application=\"jimm\"} | json",
+                    "editorMode": "code",
+                    "expr": "sum by (level) (count_over_time({charm=~\"juju-jimm-k8s|jimm\"} | json | __error__=\"\" | level=~\"$level\" |~ \"(?i)$search\" [1m]))",
                     "queryType": "range",
                     "refId": "A"
                 }
             ],
-            "title": "JIMM Debug Logs",
+            "title": "Log volume by level",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "loki",
+                "uid": "${lokids}"
+            },
+            "gridPos": {
+                "h": 14,
+                "w": 24,
+                "x": 0,
+                "y": 7
+            },
+            "id": 1,
+            "options": {
+                "dedupStrategy": "none",
+                "enableLogDetails": true,
+                "prettifyLogMessage": true,
+                "showCommonLabels": false,
+                "showLabels": false,
+                "showTime": true,
+                "sortOrder": "Descending",
+                "wrapLogMessage": true
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "loki",
+                        "uid": "${lokids}"
+                    },
+                    "editorMode": "code",
+                    "expr": "{charm=~\"juju-jimm-k8s|jimm\"} | json | __error__=\"\" | level=~\"$level\" |~ \"(?i)$search\"",
+                    "queryType": "range",
+                    "refId": "A"
+                }
+            ],
+            "title": "JIMM Logs",
             "type": "logs"
         }
     ],
@@ -65,7 +99,60 @@
     "style": "dark",
     "tags": [],
     "templating": {
-        "list": []
+        "list": [
+            {
+                "allValue": ".*",
+                "current": {
+                    "selected": true,
+                    "text": "All",
+                    "value": "$__all"
+                },
+                "hide": 0,
+                "includeAll": true,
+                "multi": false,
+                "name": "level",
+                "options": [
+                    {
+                        "selected": true,
+                        "text": "All",
+                        "value": "$__all"
+                    },
+                    {
+                        "selected": false,
+                        "text": "debug",
+                        "value": "debug"
+                    },
+                    {
+                        "selected": false,
+                        "text": "info",
+                        "value": "info"
+                    },
+                    {
+                        "selected": false,
+                        "text": "warn",
+                        "value": "warn"
+                    },
+                    {
+                        "selected": false,
+                        "text": "error",
+                        "value": "error"
+                    }
+                ],
+                "query": "debug, info, warn, error",
+                "skipUrlSync": false,
+                "type": "custom"
+            },
+            {
+                "current": {
+                    "value": ""
+                },
+                "hide": 0,
+                "label": "Search",
+                "name": "search",
+                "skipUrlSync": false,
+                "type": "textbox"
+            }
+        ]
     },
     "time": {
         "from": "now-6h",

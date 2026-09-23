@@ -1,0 +1,11 @@
+alert: JimmSlowDatabaseQueries
+expr: histogram_quantile(0.95, sum by (le, method) (rate(jimm_db_query_duration_seconds_bucket[5m]))) > 1
+for: 10m
+labels:
+  severity: Warning
+annotations:
+  summary: Slow database queries ({{ $labels.method }}).
+  description: >-
+    The p95 latency of database query {{ $labels.method }} has been above 1 second
+    for 10 minutes. The database may be under-provisioned or the query may need
+    attention.
