@@ -154,7 +154,7 @@
                         "uid": "${prometheusds}"
                     },
                     "editorMode": "builder",
-                    "expr": "jimm_system_controller_count",
+                    "expr": "jimm_system_controller",
                     "legendFormat": "__auto",
                     "range": true,
                     "refId": "A"
@@ -217,7 +217,7 @@
                         "uid": "${prometheusds}"
                     },
                     "editorMode": "builder",
-                    "expr": "sum by(controller) (jimm_system_model_count)",
+                    "expr": "sum by(controller) (jimm_system_model)",
                     "legendFormat": "__auto",
                     "range": true,
                     "refId": "A"
@@ -336,7 +336,7 @@
                     },
                     "editorMode": "builder",
                     "exemplar": false,
-                    "expr": "go_memstats_alloc_bytes{juju_application=\"jimm\"}",
+                    "expr": "go_memstats_alloc_bytes{juju_charm=~\"juju-jimm-k8s|jimm\"}",
                     "legendFormat": "{{juju_unit}}",
                     "range": true,
                     "refId": "A"
@@ -429,7 +429,7 @@
                         "uid": "${prometheusds}"
                     },
                     "editorMode": "builder",
-                    "expr": "rate(go_memstats_alloc_bytes_total{juju_application=\"jimm\"}[$__rate_interval])",
+                    "expr": "rate(go_memstats_alloc_bytes_total{juju_charm=~\"juju-jimm-k8s|jimm\"}[$__rate_interval])",
                     "legendFormat": "{{juju_unit}}",
                     "range": true,
                     "refId": "A"
@@ -521,7 +521,7 @@
                         "uid": "${prometheusds}"
                     },
                     "editorMode": "builder",
-                    "expr": "go_goroutines{juju_application=\"jimm\"}",
+                    "expr": "go_goroutines{juju_charm=~\"juju-jimm-k8s|jimm\"}",
                     "legendFormat": "{{juju_unit}}",
                     "range": true,
                     "refId": "A"
@@ -609,7 +609,7 @@
                         "uid": "${prometheusds}"
                     },
                     "editorMode": "builder",
-                    "expr": "rate(go_memstats_mallocs_total{juju_application=\"jimm\"}[$__rate_interval])",
+                    "expr": "rate(go_memstats_mallocs_total{juju_charm=~\"juju-jimm-k8s|jimm\"}[$__rate_interval])",
                     "legendFormat": "{{juju_unit}}",
                     "range": true,
                     "refId": "A"
@@ -701,7 +701,7 @@
                         "uid": "${prometheusds}"
                     },
                     "editorMode": "builder",
-                    "expr": "rate(go_memstats_frees_total{juju_application=\"jimm\"}[$__rate_interval])",
+                    "expr": "rate(go_memstats_frees_total{juju_charm=~\"juju-jimm-k8s|jimm\"}[$__rate_interval])",
                     "legendFormat": "{{juju_unit}}",
                     "range": true,
                     "refId": "A"
@@ -795,7 +795,7 @@
                         "uid": "${prometheusds}"
                     },
                     "editorMode": "builder",
-                    "expr": "go_gc_duration_seconds{juju_application=\"jimm\", quantile=~\"0.75|1\"}",
+                    "expr": "go_gc_duration_seconds{juju_charm=~\"juju-jimm-k8s|jimm\", quantile=~\"0.75|1\"}",
                     "legendFormat": "{{juju_unit}} p{{quantile}}",
                     "range": true,
                     "refId": "A"
@@ -1983,14 +1983,6 @@
                     "legendFormat": "__auto",
                     "range": true,
                     "refId": "A"
-                },
-                {
-                    "datasource": {
-                        "type": "prometheus",
-                        "uid": "${prometheusds}"
-                    },
-                    "hide": false,
-                    "refId": "B"
                 }
             ],
             "title": "DB Calls Duration (p${percentile})",
