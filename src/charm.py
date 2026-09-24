@@ -101,8 +101,8 @@ JIMM_SERVICE_NAME = "jimm"
 DATABASE_NAME = "jimm"
 OPENFGA_STORE_NAME = "jimm"
 LOG_FILE = "/var/log/jimm"
-# This likely will just be JIMM's port.
-PROMETHEUS_PORT = 8080
+# JIMM serves /metrics on its internal listener (JIMM_INTERNAL_LISTEN_ADDR).
+PROMETHEUS_PORT = 9090
 OAUTH = "oauth"
 OAUTH_SCOPES = "openid profile email offline_access"
 # TODO: Add "device_code" below once the charm interface supports it.
@@ -1077,17 +1077,6 @@ class JimmOperatorCharm(CharmBase):
         logger.info("Validating trusted ca certificates.")
 
         ca_certs = self.trusted_cert_transfer.get_all_certificates()
-
-        # deal with v0 relations
-        cert_transfer_integrations = self.trusted_cert_transfer.charm.model.relations[
-            CERTIFICATE_TRANSFER_INTEGRATION_NAME
-        ]
-
-        for integration in cert_transfer_integrations:
-            ca = {integration.data[unit]["ca"] for unit in integration.units if "ca" in integration.data.get(unit, {})}
-            ca_certs.update(ca)
-
-        ca_bundle = "\n".join(ca_certs)
 
         if not ca_certs:
             logger.info("No trusted CA certificates found, skipping update.")

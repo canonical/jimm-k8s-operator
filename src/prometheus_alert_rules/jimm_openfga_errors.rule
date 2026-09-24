@@ -1,0 +1,10 @@
+alert: JimmOpenFGAErrors
+expr: sum by (method) (rate(jimm_openfga_error_total[5m])) > 0
+for: 5m
+labels:
+  severity: Warning
+annotations:
+  summary: OpenFGA errors ({{ $labels.method }}).
+  description: >-
+    JIMM is experiencing sustained errors calling OpenFGA via {{ $labels.method }}.
+    Authorization checks may be failing.

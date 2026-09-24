@@ -16,9 +16,10 @@ resource "juju_application" "jimm" {
     controller-admins       = var.jimm_config.controller_admins
     log-level               = var.jimm_config.log_level
     dns-name                = var.jimm_config.dns_name
-    postgres-secret-storage = false
+    postgres-secret-storage = var.jimm_config.postgres-secret-storage
     public-key              = var.jimm_config.public_key
     private-key             = sensitive(var.jimm_config.private_key)
+    oauth-group-claim-key   = var.jimm_config.oauth-group-claim-key
   }
 
   model_uuid = var.model_uuid
