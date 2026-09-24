@@ -1,0 +1,125 @@
+{
+    "annotations": {
+        "list": [
+            {
+                "builtIn": 1,
+                "datasource": {
+                    "type": "grafana",
+                    "uid": "-- Grafana --"
+                },
+                "enable": true,
+                "hide": true,
+                "iconColor": "rgba(0, 211, 255, 1)",
+                "name": "Annotations & Alerts",
+                "type": "dashboard"
+            }
+        ]
+    },
+    "editable": true,
+    "graphTooltip": 0,
+    "links": [],
+    "panels": [
+        {
+            "datasource": {
+                "type": "tempo",
+                "uid": "${tempods}"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "custom": {}
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "traceID"
+                        },
+                        "properties": [
+                            {
+                                "id": "links",
+                                "value": [
+                                    {
+                                        "targetBlank": false,
+                                        "title": "Open trace",
+                                        "url": "/explore?left={\"range\":{\"from\":\"now-1h\",\"to\":\"now\"},\"datasource\":\"${tempods}\",\"queries\":[{\"query\":\"${__value.raw}\",\"queryType\":\"traceql\",\"refId\":\"A\",\"datasource\":{\"type\":\"tempo\",\"uid\":\"${tempods}\"}}]}"
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            "gridPos": {
+                "h": 24,
+                "w": 24,
+                "x": 0,
+                "y": 0
+            },
+            "id": 1,
+            "options": {
+                "cellHeight": "sm",
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "desc": true,
+                        "displayName": "Start time"
+                    }
+                ]
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "tempo",
+                        "uid": "${tempods}"
+                    },
+                    "filters": [],
+                    "limit": 50,
+                    "query": "{ name = \"jimm.juju-proxy\" || name = \"jimm.facade\" || name = \"jimm.model-proxy\" } with (most_recent=true)",
+                    "queryType": "traceql",
+                    "refId": "A",
+                    "spss": 3,
+                    "tableType": "traces"
+                }
+            ],
+            "title": "Recent JIMM traces",
+            "type": "table"
+        }
+    ],
+    "schemaVersion": 41,
+    "tags": [
+        "tempo",
+        "tracing",
+        "jimm",
+        "juju"
+    ],
+    "templating": {
+        "list": [
+            {
+                "current": {},
+                "description": "Tempo datasource for trace search",
+                "error": null,
+                "hide": 0,
+                "includeAll": false,
+                "label": "Tempo datasource",
+                "multi": false,
+                "name": "tempods",
+                "options": [],
+                "query": "tempo",
+                "queryValue": "",
+                "refresh": 1,
+                "regex": "",
+                "skipUrlSync": false,
+                "type": "datasource"
+            }
+        ]
+    },
+    "time": {
+        "from": "now-1h",
+        "to": "now"
+    },
+    "timezone": "browser",
+    "title": "JAAS Traces",
+    "uid": "jaas-traces",
+    "version": 5,
+    "weekStart": ""
+}
