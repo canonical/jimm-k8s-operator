@@ -1,0 +1,10 @@
+alert: JimmJujuApiErrors
+expr: sum by (controller, method) (rate(jimm_juju_error_total[5m])) > 0
+for: 5m
+labels:
+  severity: Warning
+annotations:
+  summary: Juju API errors on controller {{ $labels.controller }} ({{ $labels.method }}).
+  description: >-
+    JIMM is experiencing sustained errors calling the Juju API on controller
+    {{ $labels.controller }} via {{ $labels.method }}.

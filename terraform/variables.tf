@@ -35,12 +35,14 @@ variable "jimm_charm" {
 // More info at https://charmhub.io/juju-jimm-k8s/configurations
 variable "jimm_config" {
   type = object({
-    uuid              = optional(string, "")
-    controller_admins = optional(string, "")
-    log_level         = optional(string, "info")
-    dns_name          = optional(string, "")
-    public_key        = optional(string, "")
-    private_key       = optional(string, "")
+    uuid                    = optional(string, "")
+    controller_admins       = optional(string, "")
+    log_level               = optional(string, "info")
+    dns_name                = optional(string, "")
+    public_key              = optional(string, "")
+    private_key             = optional(string, "")
+    oauth-group-claim-key   = optional(string, "")
+    postgres-secret-storage = optional(bool, false)
   })
   description = <<EOT
     jimm_config = {
@@ -51,6 +53,8 @@ variable "jimm_config" {
       # you can generate this keypair using `go run github.com/go-macaroon-bakery/macaroon-bakery/cmd/bakery-keygen/v3@latest
       public_key: "The public part of JIMM's macaroon bakery keypair."
       private_key: "The private part of JIMM's macaroon bakery keypair."
+      oauth-group-claim-key: "The key in the JWT where the group claim is located."
+      postgres-secret-storage: "Whether to use PostgreSQL for secret storage instead of Vault."
     }
   EOT
 }

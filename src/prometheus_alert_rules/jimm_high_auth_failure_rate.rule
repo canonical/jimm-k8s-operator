@@ -1,0 +1,11 @@
+alert: JimmHighAuthFailureRate
+expr: sum by (method) (rate(jimm_auth_failure_total[5m])) > 0.2
+for: 5m
+labels:
+  severity: High
+annotations:
+  summary: High authentication failure rate for method {{ $labels.method }}.
+  description: >-
+    JIMM is failing more than 12 authentications per minute via {{ $labels.method }}
+    for 5 minutes. This may indicate a misconfigured identity provider or a
+    brute-force attempt.
