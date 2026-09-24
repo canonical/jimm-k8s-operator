@@ -14,6 +14,7 @@ parts:
       - click
       - cosl
       - cryptography
+      - diskcache
       - ecdsa
       - exceptiongroup
       - hvac

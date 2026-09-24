@@ -1,0 +1,10 @@
+alert: JimmVaultErrors
+expr: sum by (method) (rate(jimm_vault_error_total[5m])) > 0
+for: 5m
+labels:
+  severity: Warning
+annotations:
+  summary: Vault errors ({{ $labels.method }}).
+  description: >-
+    JIMM is experiencing sustained errors calling Vault via {{ $labels.method }}.
+    Secret retrieval may be failing.

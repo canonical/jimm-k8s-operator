@@ -2,12 +2,13 @@
 # Copyright 2022 Canonical Ltd
 # See LICENSE file for licensing details.
 
+import json
 import logging
 import re
 import secrets
 import socket
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import pytest
 from oauth_tools import (
@@ -17,7 +18,13 @@ from oauth_tools import (
 )
 from playwright.async_api import BrowserContext, Page
 from pytest_operator.plugin import OpsTest
-from utils import deploy_jimm, get_jimm, get_jimm_address, get_service_external_ip
+from utils import (
+    APP_NAME,
+    deploy_jimm,
+    get_jimm,
+    get_jimm_address,
+    get_service_external_ip,
+)
 
 pytest_plugins = ["oauth_tools.fixtures"]
 logger = logging.getLogger(__name__)
@@ -38,6 +45,34 @@ async def test_build_and_deploy(
     # (Optionally build) and deploy charm from local source folder
 
     await deploy_jimm(ops_test, charm, hydra_app_name, self_signed_certificates_app_name, ext_idp_service)
+
+
+async def test_certificate_transfer_integration(ops_test: OpsTest, app_integration_data: Callable) -> None:
+    """Verify transferred CA certificates are written to JIMM's trust store."""
+    relation_data = await app_integration_data(APP_NAME, "receive-ca-cert")
+    assert relation_data is not None, "certificate-transfer relation is missing"
+
+    certificates = json.loads(relation_data["certificates"])
+    assert certificates, "certificate-transfer relation did not provide any certificates"
+    assert all(certificate.startswith("-----BEGIN CERTIFICATE-----") for certificate in certificates)
+
+    if ops_test.model_name is None:
+        raise RuntimeError("ops_test.model_name is not available")
+    _, ca_bundle, _ = await ops_test.run(
+        "kubectl",
+        "exec",
+        "-n",
+        ops_test.model_name,
+        f"{APP_NAME}-0",
+        "-c",
+        "jimm",
+        "--",
+        "cat",
+        "/usr/local/share/ca-certificates/trusted-ca-certs.crt",
+    )
+
+    for certificate in certificates:
+        assert certificate.rstrip() in ca_bundle
 
 
 async def test_jimm_oauth_browser_login(
