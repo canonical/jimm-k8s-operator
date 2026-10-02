@@ -21,6 +21,7 @@ from ops.testing import ActionFailed, Harness
 
 from src.charm import (
     HOST_KEY_LOOKUP,
+    JIMM_HEALTH_CHECK_URL,
     JIMM_SERVICE_NAME,
     JWKS_ACTIVATE_AT_LOOKUP,
     JWKS_EXPIRES_AT_LOOKUP,
@@ -163,7 +164,7 @@ def get_expected_plan(env):
             "jimm-check": {
                 "override": "replace",
                 "period": "1m",
-                "http": {"url": "http://localhost:8080/debug/status"},
+                "http": {"url": JIMM_HEALTH_CHECK_URL},
             }
         },
     }
