@@ -100,8 +100,14 @@ JIMM_SERVICE_NAME = "jimm"
 DATABASE_NAME = "jimm"
 OPENFGA_STORE_NAME = "jimm"
 LOG_FILE = "/var/log/jimm"
-# JIMM serves /metrics on its internal listener (JIMM_INTERNAL_LISTEN_ADDR).
-PROMETHEUS_PORT = 9090
+# Port JIMM listens on for its public API (JIMM_LISTEN_ADDR).
+JIMM_API_PORT = 8080
+# Port JIMM listens on for internal endpoints such as /metrics and /debug/status
+# (JIMM_INTERNAL_LISTEN_ADDR).
+JIMM_INTERNAL_PORT = 9090
+PROMETHEUS_PORT = JIMM_INTERNAL_PORT
+# Pebble health check for the internal listener, which serves /debug/status.
+JIMM_HEALTH_CHECK_URL = f"http://localhost:{JIMM_INTERNAL_PORT}/debug/status"
 OAUTH = "oauth"
 OAUTH_SCOPES = "openid profile email offline_access"
 # TODO: Add "device_code" below once the charm interface supports it.
@@ -211,13 +217,13 @@ class JimmOperatorCharm(CharmBase):
             self,
             relation_name="ingress",
             strip_prefix=True,
-            port=8080,
+            port=JIMM_API_PORT,
         )
         self.internal_ingress = IngressPerAppRequirer(
             self,
             relation_name="internal-ingress",
             strip_prefix=True,
-            port=9090,
+            port=JIMM_INTERNAL_PORT,
         )
 
         # if the unit is the leader we set the port. We set the port just for the leader,
@@ -251,7 +257,7 @@ class JimmOperatorCharm(CharmBase):
             charm=self,
             service_hostname=str(self.config.get("dns-name", "")),
             service_name=self.app.name,
-            service_port=8080,
+            service_port=JIMM_API_PORT,
         )
 
         # OAuth relation
@@ -506,8 +512,8 @@ class JimmOperatorCharm(CharmBase):
             "JIMM_JWT_EXPIRY": self.config.get("jwt-expiry"),
             "JIMM_JWKS_PATH": str(JWKS_PATH),
             "JIMM_JWKS_PRIVATE_KEY_PATH": str(JWKS_PRIVATE_KEY_PATH),
-            "JIMM_LISTEN_ADDR": ":8080",
-            "JIMM_INTERNAL_LISTEN_ADDR": ":9090",
+            "JIMM_LISTEN_ADDR": f":{JIMM_API_PORT}",
+            "JIMM_INTERNAL_LISTEN_ADDR": f":{JIMM_INTERNAL_PORT}",
             "JIMM_LOG_LEVEL": self.config.get("log-level", ""),
             "JIMM_MACAROON_EXPIRY_DURATION": self.config.get("macaroon-expiry-duration", "24h"),
             "JIMM_OAUTH_CLIENT_ID": oauth_provider_info.client_id,
@@ -565,7 +571,7 @@ class JimmOperatorCharm(CharmBase):
                 "jimm-check": {
                     "override": "replace",
                     "period": "1m",
-                    "http": {"url": "http://localhost:8080/debug/status"},
+                    "http": {"url": JIMM_HEALTH_CHECK_URL},
                 }
             },
         }
