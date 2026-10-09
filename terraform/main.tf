@@ -20,6 +20,8 @@ resource "juju_application" "jimm" {
     public-key                         = var.jimm_config.public_key
     private-key                        = sensitive(var.jimm_config.private_key)
     oauth-group-claim-key              = var.jimm_config.oauth-group-claim-key
+    idp-group-fetcher-type             = var.jimm_config.idp-group-fetcher-type
+    idp-hook-service-address           = var.jimm_config.idp-hook-service-address
     audit-log-retention-period-in-days = var.jimm_config.audit-log-retention-period-in-days
     cors-allowed-origins               = var.jimm_config.cors-allowed-origins
     juju-dashboard-location            = var.jimm_config.juju-dashboard-location

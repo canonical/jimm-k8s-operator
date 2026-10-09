@@ -78,6 +78,20 @@ options:
       
       When this configuration key is unset, no group scopes are requested.
       Permissions for the groups can be set via the JIMM plugin for the Juju CLI.
+  idp-group-fetcher-type:
+    type: string
+    default: ""
+    description: |
+      IdP group fetcher implementation. Set to "hook-service" to enable
+      IdP group lookups through the hook-service. Leave empty to disable
+      hook-service group fetching.
+  idp-hook-service-address:
+    type: string
+    default: ""
+    description: |
+      Address of the hook-service gRPC API, for example
+      "hook-service.internal:9090". Required when
+      idp-group-fetcher-type is "hook-service".
   oauth-client-credential-scopes:
     type: string
     default: ""
