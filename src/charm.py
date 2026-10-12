@@ -509,6 +509,8 @@ class JimmOperatorCharm(CharmBase):
             "JIMM_DASHBOARD_LOCATION": self.config.get("juju-dashboard-location", "https://jaas.ai/models"),
             "JIMM_DNS_NAME": dns_name,
             "JIMM_DSN": self._make_database_dsn(),
+            "JIMM_IDP_GROUP_FETCHER_TYPE": self.config.get("idp-group-fetcher-type", ""),
+            "JIMM_IDP_HOOK_SERVICE_ADDRESS": self.config.get("idp-hook-service-address", ""),
             "JIMM_JWT_EXPIRY": self.config.get("jwt-expiry"),
             "JIMM_JWKS_PATH": str(JWKS_PATH),
             "JIMM_JWKS_PRIVATE_KEY_PATH": str(JWKS_PRIVATE_KEY_PATH),

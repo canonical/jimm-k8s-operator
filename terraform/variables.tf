@@ -42,6 +42,8 @@ variable "jimm_config" {
     public_key                         = optional(string, "")
     private_key                        = optional(string, "")
     oauth-group-claim-key              = optional(string, "")
+    idp-group-fetcher-type             = optional(string, "")
+    idp-hook-service-address           = optional(string, "")
     postgres-secret-storage            = optional(bool, false)
     audit-log-retention-period-in-days = optional(string, "0")
     cors-allowed-origins               = optional(string, "")
@@ -67,6 +69,8 @@ variable "jimm_config" {
       public_key: "The public part of JIMM's macaroon bakery keypair."
       private_key: "The private part of JIMM's macaroon bakery keypair."
       oauth-group-claim-key: "The key in the JWT where the group claim is located."
+      idp-group-fetcher-type: "IdP group fetcher implementation. Set to hook-service to enable hook-service group lookups; leave empty to disable."
+      idp-hook-service-address: "Address of the hook-service gRPC API. Required when idp-group-fetcher-type is hook-service."
       postgres-secret-storage: "Whether to use PostgreSQL for secret storage instead of Vault."
       audit-log-retention-period-in-days: "How long to hold audit logs for in days, i.e., 10 = 10 days. If 0 is set, the logs will never be purged. Logs are purged at 9AM UTC. Defaults to 0."
       cors-allowed-origins: "Space separated list of addresses which are allowed to make requests cross-origin."

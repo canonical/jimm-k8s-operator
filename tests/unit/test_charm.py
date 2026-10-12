@@ -683,6 +683,26 @@ class TestCharm(TestCase):
         plan = self.harness.get_container_pebble_plan("jimm")
         self.assertEqual(plan.to_dict(), get_expected_plan(expected_env))
 
+    def test_idp_group_fetcher_config(self):
+        self.start_minimal_jimm()
+
+        self.harness.update_config(
+            {
+                "idp-group-fetcher-type": "hook-service",
+                "idp-hook-service-address": "hook-service.internal:9090",
+            }
+        )
+
+        expected_env = EXPECTED_VAULT_ENV.copy()
+        expected_env.update(
+            {
+                "JIMM_IDP_GROUP_FETCHER_TYPE": "hook-service",
+                "JIMM_IDP_HOOK_SERVICE_ADDRESS": "hook-service.internal:9090",
+            }
+        )
+        plan = self.harness.get_container_pebble_plan("jimm")
+        self.assertEqual(plan.to_dict(), get_expected_plan(expected_env))
+
     def test_dashboard_relation_joined(self):
         self.start_minimal_jimm()
 
