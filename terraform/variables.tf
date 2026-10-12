@@ -31,6 +31,12 @@ variable "jimm_charm" {
   }
 }
 
+variable "jimm_image" {
+  description = "Optional override for the JIMM OCI image resource. Accepts an image URL or a Charmhub resource revision."
+  type        = string
+  default     = null
+}
+
 // The JIMM charm configuration
 // More info at https://charmhub.io/juju-jimm-k8s/configurations
 variable "jimm_config" {

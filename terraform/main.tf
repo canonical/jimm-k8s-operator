@@ -37,6 +37,10 @@ resource "juju_application" "jimm" {
     ssh-host-key-secret-id             = var.jimm_config.ssh-host-key-secret-id
   }
 
+  resources = var.jimm_image != null ? {
+    "jimm-image" = var.jimm_image
+  } : null
+
   model_uuid = var.model_uuid
 }
 
