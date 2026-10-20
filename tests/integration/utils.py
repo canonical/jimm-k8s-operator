@@ -195,6 +195,11 @@ async def deploy_jimm(
                 channel="14/stable",
             ),
             ops_test.model.deploy(
+                "self-signed-certificates",
+                application_name="postgresql-certificates",
+                channel="1/stable",
+            ),
+            ops_test.model.deploy(
                 "openfga-k8s",
                 application_name="openfga",
                 channel="latest/stable",
@@ -205,6 +210,9 @@ async def deploy_jimm(
                 channel="latest/stable",
             ),
         )
+
+    logger.info("enabling postgresql TLS with a separate certificate provider")
+    await ops_test.model.integrate("jimm-db:certificates", "postgresql-certificates:certificates")
 
     logger.info("waiting for postgresql")
     await ops_test.model.wait_for_idle(["jimm-db"], raise_on_blocked=False, status="active", timeout=2000)

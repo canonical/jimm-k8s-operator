@@ -12,6 +12,7 @@ import pathlib
 import tempfile
 from datetime import datetime, timedelta, timezone
 from unittest import TestCase, mock
+from urllib.parse import parse_qs, urlparse
 
 import ops
 from jose.backends.cryptography_backend import CryptographyRSAKey
@@ -20,6 +21,7 @@ from ops.model import ActiveStatus, BlockedStatus, SecretNotFoundError, WaitingS
 from ops.testing import ActionFailed, Harness
 
 from src.charm import (
+    DATABASE_CA_PATH,
     HOST_KEY_LOOKUP,
     JIMM_HEALTH_CHECK_URL,
     JIMM_SERVICE_NAME,
@@ -461,8 +463,10 @@ class TestCharm(TestCase):
         self.harness.enable_hooks()
         self.create_auth_model_info()
         self.add_postgres_relation()
+        integration_data = self.harness.charm.database.fetch_relation_data()[self.postgres_rel_id]
         self.assertEqual(
-            self.harness.charm._make_database_dsn(), "postgresql://postgres-user:postgres-pass@local-1.localhost/jimm"
+            self.harness.charm._make_database_dsn(integration_data),
+            "postgresql://postgres-user:postgres-pass@local-1.localhost/jimm",
         )
 
     def test_postgres_secret_storage_config(self):
@@ -476,6 +480,57 @@ class TestCharm(TestCase):
         expected_env = BASE_ENV.copy()
         expected_env.update({"INSECURE_SECRET_STORAGE": "true"})
         self.assertEqual(plan.to_dict(), get_expected_plan(expected_env))
+
+    def test_postgres_tls_uses_relation_ca(self):
+        self.start_minimal_jimm()
+        self.harness.update_relation_data(
+            self.postgres_rel_id, "postgresql", {"tls": "True", "tls-ca": "database-ca"}
+        )
+
+        self.assertEqual(self.read_workload_file(DATABASE_CA_PATH), "database-ca")
+        plan = self.harness.get_container_pebble_plan(WORKLOAD_CONTAINER)
+        dsn = plan.services[JIMM_SERVICE_NAME].environment["JIMM_DSN"]
+        self.assertEqual(
+            parse_qs(urlparse(dsn).query),
+            {"sslmode": ["verify-full"], "sslrootcert": [str(DATABASE_CA_PATH)]},
+        )
+        self.assertEqual(self.harness.model.unit.status, ActiveStatus("running"))
+
+    def test_postgres_tls_without_ca_uses_system_trust(self):
+        self.start_minimal_jimm()
+        self.harness.update_relation_data(self.postgres_rel_id, "postgresql", {"tls": "True"})
+        plan = self.harness.get_container_pebble_plan(WORKLOAD_CONTAINER)
+        dsn = plan.services[JIMM_SERVICE_NAME].environment["JIMM_DSN"]
+        self.assertEqual(parse_qs(urlparse(dsn).query), {"sslmode": ["verify-full"]})
+        self.assertEqual(self.harness.model.unit.status, ActiveStatus("running"))
+
+    def test_postgres_tls_disabled_preserves_fallback(self):
+        self.start_minimal_jimm()
+        self.harness.update_relation_data(
+            self.postgres_rel_id, "postgresql", {"tls": "True", "tls-ca": "database-ca"}
+        )
+        for tls in ("False", ""):
+            with self.subTest(tls=tls):
+                self.harness.update_relation_data(self.postgres_rel_id, "postgresql", {"tls": tls})
+                plan = self.harness.get_container_pebble_plan(WORKLOAD_CONTAINER)
+                dsn = plan.services[JIMM_SERVICE_NAME].environment["JIMM_DSN"]
+                self.assertEqual(urlparse(dsn).query, "")
+                self.assertEqual(self.harness.model.unit.status, ActiveStatus("running"))
+
+    def test_postgres_tls_ca_rotation_restarts_only_when_changed(self):
+        self.start_minimal_jimm()
+        self.harness.update_relation_data(
+            self.postgres_rel_id, "postgresql", {"tls": "True", "tls-ca": "database-ca"}
+        )
+        with mock.patch("ops.model.Container.restart") as restart:
+            self.harness.update_relation_data(
+                self.postgres_rel_id, "postgresql", {"tls-ca": "rotated-database-ca"}
+            )
+            restart.assert_called_once_with(JIMM_SERVICE_NAME)
+            self.assertEqual(self.read_workload_file(DATABASE_CA_PATH), "rotated-database-ca")
+            restart.reset_mock()
+            self.harness.charm.on.update_status.emit()
+            restart.assert_not_called()
 
     def test_proxy_settings(
         self,

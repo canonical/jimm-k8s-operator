@@ -47,6 +47,14 @@ async def test_build_and_deploy(
     await deploy_jimm(ops_test, charm, hydra_app_name, self_signed_certificates_app_name, ext_idp_service)
 
 
+async def test_postgresql_tls_integration(ops_test: OpsTest, app_integration_data: Callable) -> None:
+    """Verify JIMM is active and reachable with PostgreSQL's TLS relation configured."""
+    assert await app_integration_data("jimm-db", "certificates"), "PostgreSQL certificates relation is missing"
+    await ops_test.model.wait_for_idle(apps=[APP_NAME, "jimm-db"], status="active", timeout=2000)
+    jimm_address = await get_jimm_address(ops_test)
+    assert get_jimm(jimm_address, "/macaroons/publickey").status_code == 200
+
+
 async def test_certificate_transfer_integration(ops_test: OpsTest, app_integration_data: Callable) -> None:
     """Verify transferred CA certificates are written to JIMM's trust store."""
     relation_data = await app_integration_data(APP_NAME, "receive-ca-cert")

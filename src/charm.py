@@ -11,7 +11,7 @@ from base64 import b64encode
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import urljoin, urlparse, urlunparse
+from urllib.parse import urlencode, urljoin, urlparse, urlunparse
 from uuid import uuid4
 
 from charms.certificate_transfer_interface.v1.certificate_transfer import (
@@ -19,10 +19,7 @@ from charms.certificate_transfer_interface.v1.certificate_transfer import (
     CertificatesRemovedEvent,
     CertificateTransferRequires,
 )
-from charms.data_platform_libs.v0.data_interfaces import (
-    DatabaseRequires,
-    DatabaseRequiresEvent,
-)
+from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.hydra.v0.oauth import ClientConfig, OAuthInfoChangedEvent, OAuthRequirer
 from charms.loki_k8s.v1.loki_push_api import LogForwarder
@@ -56,6 +53,7 @@ from ops.charm import (
     ActionEvent,
     CharmBase,
     InstallEvent,
+    RelationChangedEvent,
     RelationDepartedEvent,
     RelationJoinedEvent,
     SecretChangedEvent,
@@ -98,6 +96,7 @@ REQUIRED_SETTINGS = {
 
 JIMM_SERVICE_NAME = "jimm"
 DATABASE_NAME = "jimm"
+DATABASE_CA_PATH = Path("/var/lib/jimm/postgresql-ca.crt")
 OPENFGA_STORE_NAME = "jimm"
 LOG_FILE = "/var/log/jimm"
 # Port JIMM listens on for its public API (JIMM_LISTEN_ADDR).
@@ -272,11 +271,8 @@ class JimmOperatorCharm(CharmBase):
             relation_name="database",
             database_name=DATABASE_NAME,
         )
-        self.framework.observe(self.database.on.database_created, self._on_database_event)
-        self.framework.observe(
-            self.database.on.endpoints_changed,
-            self._on_database_event,
-        )
+        # TLS-only changes do not emit database_created or endpoints_changed.
+        self.framework.observe(self.on.database_relation_changed, self._on_database_event)
         self.framework.observe(
             self.on.database_relation_broken,
             self._on_database_relation_broken,
@@ -508,7 +504,6 @@ class JimmOperatorCharm(CharmBase):
             "JIMM_DASHBOARD_FINAL_REDIRECT_URL": self.config.get("juju-dashboard-location"),
             "JIMM_DASHBOARD_LOCATION": self.config.get("juju-dashboard-location", "https://jaas.ai/models"),
             "JIMM_DNS_NAME": dns_name,
-            "JIMM_DSN": self._make_database_dsn(),
             "JIMM_IDP_GROUP_FETCHER_TYPE": self.config.get("idp-group-fetcher-type", ""),
             "JIMM_IDP_HOOK_SERVICE_ADDRESS": self.config.get("idp-hook-service-address", ""),
             "JIMM_JWT_EXPIRY": self.config.get("jwt-expiry"),
@@ -554,6 +549,8 @@ class JimmOperatorCharm(CharmBase):
         if self.config.get("postgres-secret-storage", False):
             config_values["INSECURE_SECRET_STORAGE"] = "true"  # Parsed by Go's strconv.ParseBool
 
+        config_values["JIMM_DSN"], database_ca_changed = self._configure_database(container)
+
         # remove empty configuration values
         config_values = {key: value for key, value in config_values.items() if value}
 
@@ -577,7 +574,7 @@ class JimmOperatorCharm(CharmBase):
                 }
             },
         }
-        force_restart = self._update_trusted_ca_certs(container)
+        force_restart = self._update_trusted_ca_certs(container) or database_ca_changed
         container.add_layer("jimm", pebble_layer, combine=True)
         try:
             if self._ready():
@@ -615,7 +612,7 @@ class JimmOperatorCharm(CharmBase):
         self._push_file_if_changed(container, JWKS_PATH, jwks_config["jwks"])
         self._push_file_if_changed(container, JWKS_PRIVATE_KEY_PATH, jwks_config["private_key"])
 
-    def _push_file_if_changed(self, container: Container, path: Path, content: str) -> None:
+    def _push_file_if_changed(self, container: Container, path: Path, content: str) -> bool:
         try:
             existing = container.pull(path).read()
         except pebble.PathError:
@@ -623,6 +620,8 @@ class JimmOperatorCharm(CharmBase):
 
         if existing != content:
             container.push(path, content, make_dirs=True)
+            return True
+        return False
 
     def ensure_session_secret_key(self):
         if not self.unit.is_leader():
@@ -736,8 +735,7 @@ class JimmOperatorCharm(CharmBase):
 
         return urlunparse(parsed._replace(scheme=websocket_scheme))
 
-    @requires_state_setter
-    def _on_database_event(self, event: DatabaseRequiresEvent) -> None:
+    def _on_database_event(self, event: RelationChangedEvent) -> None:
         """Database event handler."""
 
         logger.info("received database event")
@@ -749,17 +747,29 @@ class JimmOperatorCharm(CharmBase):
 
         self._update_workload(event)
 
-    def _make_database_dsn(self) -> str:
-        """Constructs a database DSN from the database relation."""
-        if not self.database.is_resource_created():
-            return ""
+    def _configure_database(self, container: Container) -> tuple[str, bool]:
+        """Fetch database settings and install the relation-provided TLS CA, if any."""
+        relation_id = self.database.relations[0].id
+        database_data = self.database.fetch_relation_data()[relation_id]
+        ca_changed = False
+        if database_data.get("tls") == "True":
+            database_ca = database_data.get("tls-ca", "").strip()
+            if database_ca:
+                ca_changed = self._push_file_if_changed(container, DATABASE_CA_PATH, database_ca)
+        return self._make_database_dsn(database_data), ca_changed
 
-        integration_id = self.database.relations[0].id
-        integration_data: dict[str, str] = self.database.fetch_relation_data()[integration_id]
+    def _make_database_dsn(self, integration_data: dict[str, str]) -> str:
+        """Construct a database DSN from the supplied relation data."""
         username = integration_data.get("username", "")
         password = integration_data.get("password", "")
         endpoint = integration_data.get("endpoints", "").split(",")[0]
-        return f"postgresql://{username}:{password}@{endpoint}/{DATABASE_NAME}"
+        dsn = f"postgresql://{username}:{password}@{endpoint}/{DATABASE_NAME}"
+        if integration_data.get("tls") == "True":
+            options = {"sslmode": "verify-full"}
+            if integration_data.get("tls-ca", "").strip():
+                options["sslrootcert"] = str(DATABASE_CA_PATH)
+            dsn += "?" + urlencode(options)
+        return dsn
 
     def _ready(self):
         container = self.unit.get_container(WORKLOAD_CONTAINER)
