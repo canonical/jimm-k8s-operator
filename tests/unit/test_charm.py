@@ -483,9 +483,7 @@ class TestCharm(TestCase):
 
     def test_postgres_tls_uses_relation_ca(self):
         self.start_minimal_jimm()
-        self.harness.update_relation_data(
-            self.postgres_rel_id, "postgresql", {"tls": "True", "tls-ca": "database-ca"}
-        )
+        self.harness.update_relation_data(self.postgres_rel_id, "postgresql", {"tls": "True", "tls-ca": "database-ca"})
 
         self.assertEqual(self.read_workload_file(DATABASE_CA_PATH), "database-ca")
         plan = self.harness.get_container_pebble_plan(WORKLOAD_CONTAINER)
@@ -506,9 +504,7 @@ class TestCharm(TestCase):
 
     def test_postgres_tls_disabled_preserves_fallback(self):
         self.start_minimal_jimm()
-        self.harness.update_relation_data(
-            self.postgres_rel_id, "postgresql", {"tls": "True", "tls-ca": "database-ca"}
-        )
+        self.harness.update_relation_data(self.postgres_rel_id, "postgresql", {"tls": "True", "tls-ca": "database-ca"})
         for tls in ("False", ""):
             with self.subTest(tls=tls):
                 self.harness.update_relation_data(self.postgres_rel_id, "postgresql", {"tls": tls})
@@ -519,13 +515,9 @@ class TestCharm(TestCase):
 
     def test_postgres_tls_ca_rotation_restarts_only_when_changed(self):
         self.start_minimal_jimm()
-        self.harness.update_relation_data(
-            self.postgres_rel_id, "postgresql", {"tls": "True", "tls-ca": "database-ca"}
-        )
+        self.harness.update_relation_data(self.postgres_rel_id, "postgresql", {"tls": "True", "tls-ca": "database-ca"})
         with mock.patch("ops.model.Container.restart") as restart:
-            self.harness.update_relation_data(
-                self.postgres_rel_id, "postgresql", {"tls-ca": "rotated-database-ca"}
-            )
+            self.harness.update_relation_data(self.postgres_rel_id, "postgresql", {"tls-ca": "rotated-database-ca"})
             restart.assert_called_once_with(JIMM_SERVICE_NAME)
             self.assertEqual(self.read_workload_file(DATABASE_CA_PATH), "rotated-database-ca")
             restart.reset_mock()
