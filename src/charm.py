@@ -11,7 +11,7 @@ from base64 import b64encode
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import urlencode, urljoin, urlparse, urlunparse
+from urllib.parse import quote, urlencode, urljoin, urlparse, urlunparse
 from uuid import uuid4
 
 from charms.certificate_transfer_interface.v1.certificate_transfer import (
@@ -574,6 +574,7 @@ class JimmOperatorCharm(CharmBase):
                 }
             },
         }
+        # CA rotation leaves the DSN unchanged; restart JIMM to reload the CA pool.
         force_restart = self._update_trusted_ca_certs(container) or database_ca_changed
         container.add_layer("jimm", pebble_layer, combine=True)
         try:
@@ -760,8 +761,8 @@ class JimmOperatorCharm(CharmBase):
 
     def _make_database_dsn(self, integration_data: dict[str, str]) -> str:
         """Construct a database DSN from the supplied relation data."""
-        username = integration_data.get("username", "")
-        password = integration_data.get("password", "")
+        username = quote(integration_data.get("username", ""), safe="")
+        password = quote(integration_data.get("password", ""), safe="")
         endpoint = integration_data.get("endpoints", "").split(",")[0]
         dsn = f"postgresql://{username}:{password}@{endpoint}/{DATABASE_NAME}"
         if integration_data.get("tls") == "True":

@@ -15,6 +15,7 @@ from unittest import TestCase, mock
 from urllib.parse import parse_qs, urlparse
 
 import ops
+from charms.data_platform_libs.v0.data_interfaces import SecretCache
 from jose.backends.cryptography_backend import CryptographyRSAKey
 from jose.constants import Algorithms
 from ops.model import ActiveStatus, BlockedStatus, SecretNotFoundError, WaitingStatus
@@ -481,6 +482,21 @@ class TestCharm(TestCase):
         expected_env.update({"INSECURE_SECRET_STORAGE": "true"})
         self.assertEqual(plan.to_dict(), get_expected_plan(expected_env))
 
+    def test_postgres_dsn_escapes_credentials(self):
+        dsn = self.harness.charm._make_database_dsn(
+            {
+                "username": "user name@domain",
+                "password": "p+ss:/?#%",
+                "endpoints": "localhost:5432",
+            }
+        )
+        parsed = urlparse(dsn)
+        self.assertEqual(parsed.username, "user%20name%40domain")
+        self.assertEqual(parsed.password, "p%2Bss%3A%2F%3F%23%25")
+        self.assertEqual(parsed.hostname, "localhost")
+        self.assertEqual(parsed.port, 5432)
+        self.assertEqual(parsed.path, "/jimm")
+
     def test_postgres_tls_uses_relation_ca(self):
         self.start_minimal_jimm()
         self.harness.update_relation_data(self.postgres_rel_id, "postgresql", {"tls": "True", "tls-ca": "database-ca"})
@@ -513,11 +529,22 @@ class TestCharm(TestCase):
                 self.assertEqual(urlparse(dsn).query, "")
                 self.assertEqual(self.harness.model.unit.status, ActiveStatus("running"))
 
-    def test_postgres_tls_ca_rotation_restarts_only_when_changed(self):
+    @mock.patch(
+        "charms.data_platform_libs.v0.data_interfaces.Data.secrets_enabled",
+        new_callable=mock.PropertyMock,
+        return_value=True,
+    )
+    def test_postgres_tls_ca_rotation_restarts_only_when_changed(self, _secrets_enabled):
         self.start_minimal_jimm()
-        self.harness.update_relation_data(self.postgres_rel_id, "postgresql", {"tls": "True", "tls-ca": "database-ca"})
+        secret_id = self.harness.add_model_secret("postgresql", {"tls": "True", "tls-ca": "database-ca"})
+        self.harness.grant_secret(secret_id, self.harness.model.app.name)
+        self.harness.update_relation_data(self.postgres_rel_id, "postgresql", {"secret-tls": secret_id})
+        self.assertEqual(self.read_workload_file(DATABASE_CA_PATH), "database-ca")
+
+        # Juju starts a fresh process per hook; Harness otherwise retains this secret cache.
+        self.harness.charm.database.secrets = SecretCache(self.harness.model, self.harness.model.app)
         with mock.patch("ops.model.Container.restart") as restart:
-            self.harness.update_relation_data(self.postgres_rel_id, "postgresql", {"tls-ca": "rotated-database-ca"})
+            self.harness.set_secret_content(secret_id, {"tls": "True", "tls-ca": "rotated-database-ca"})
             restart.assert_called_once_with(JIMM_SERVICE_NAME)
             self.assertEqual(self.read_workload_file(DATABASE_CA_PATH), "rotated-database-ca")
             restart.reset_mock()
