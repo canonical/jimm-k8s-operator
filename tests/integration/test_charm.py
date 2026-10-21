@@ -22,6 +22,7 @@ from pytest_operator.plugin import OpsTest
 from utils import (
     APP_NAME,
     deploy_jimm,
+    get_database_dsn_options,
     get_jimm,
     get_jimm_address,
     get_service_external_ip,
@@ -49,9 +50,13 @@ async def test_build_and_deploy(
 
 
 async def test_postgresql_tls_integration(ops_test: OpsTest, app_integration_data: Callable) -> None:
-    """Verify JIMM is active and reachable with PostgreSQL's TLS relation configured."""
+    """Verify JIMM requires verified database TLS and is reachable."""
     assert await app_integration_data("jimm-db", "certificates"), "PostgreSQL certificates relation is missing"
     await ops_test.model.wait_for_idle(apps=[APP_NAME, "jimm-db"], status="active", timeout=2000)
+    assert await get_database_dsn_options(ops_test) == {
+        "sslmode": ["verify-full"],
+        "sslrootcert": ["/var/lib/jimm/postgresql-ca.crt"],
+    }
     jimm_address = await get_jimm_address(ops_test)
     assert get_jimm(jimm_address, "/macaroons/publickey").status_code == 200
 
@@ -158,6 +163,7 @@ async def test_jimm_oauth_browser_login(
         timeout=300,
     )
     await ops_test.model.wait_for_idle(apps=[APP_NAME, "jimm-db", "openfga"], status="active", timeout=2000)
+    assert await get_database_dsn_options(ops_test) == {}
     request = get_jimm(
         jimm_address,
         "/auth/whoami",

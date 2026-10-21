@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 import requests
 import yaml
@@ -36,6 +37,17 @@ async def get_unit_data(ops_test: OpsTest, unit_name: str) -> dict:
 async def get_app_config(ops_test: OpsTest, app_name: str) -> dict:
     _, stdout, _ = await ops_test.juju("config", app_name, "--format=yaml")
     return yaml.safe_load(stdout)
+
+
+async def get_database_dsn_options(ops_test: OpsTest) -> dict[str, list[str]]:
+    """Read database connection options from JIMM's Pebble plan."""
+    return_code, stdout, stderr = await ops_test.juju(
+        "ssh", "--container=jimm", f"{APP_NAME}/0", "/charm/bin/pebble", "plan"
+    )
+    assert return_code == 0, f"Failed to read JIMM's Pebble plan: {stderr}"
+    plan = yaml.safe_load(stdout)
+    dsn = plan["services"]["jimm"]["environment"]["JIMM_DSN"]
+    return parse_qs(urlsplit(dsn).query)
 
 
 async def get_jimm_address(ops_test: OpsTest) -> str:
