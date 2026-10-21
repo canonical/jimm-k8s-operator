@@ -75,3 +75,25 @@ Integration tests require the following setup:
 7. Your kubectl must be configured to talk to microk8s - `microk8s config > ~/.kube/config`
 8.  Create the `venv` and install `tox` as described above.
 9.  Run the test (optionally keep the model for debugging) - `tox -e integration -- --keep-models`
+
+### Manual authenticated API testing
+
+1. Open `https://<jimm-hostname>/auth/login` in a browser and complete sign-in with
+   the configured identity provider. For the integration-test identity provider,
+   use **Register** first if you do not already have an account.
+2. After returning to JIMM, open the browser developer tools and find
+   **Application/Storage > Cookies** for the JIMM hostname.
+3. Copy the **value** of `jimm-browser-session`.
+4. In Bash, send it explicitly to JIMM:
+
+```bash
+JIMM_URL='https://<jimm-hostname>'
+read -r -s -p 'JIMM session cookie: ' JIMM_COOKIE
+printf '\n'
+curl --fail-with-body \
+  --cookie "jimm-browser-session=$JIMM_COOKIE" \
+  "$JIMM_URL/auth/whoami"
+unset JIMM_COOKIE
+```
+
+A successful response contains the signed-in user's email.

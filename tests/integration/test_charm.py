@@ -2,6 +2,7 @@
 # Copyright 2022 Canonical Ltd
 # See LICENSE file for licensing details.
 
+import asyncio
 import json
 import logging
 import re
@@ -21,6 +22,7 @@ from pytest_operator.plugin import OpsTest
 from utils import (
     APP_NAME,
     deploy_jimm,
+    get_database_dsn_options,
     get_jimm,
     get_jimm_address,
     get_service_external_ip,
@@ -45,6 +47,18 @@ async def test_build_and_deploy(
     # (Optionally build) and deploy charm from local source folder
 
     await deploy_jimm(ops_test, charm, hydra_app_name, self_signed_certificates_app_name, ext_idp_service)
+
+
+async def test_postgresql_tls_integration(ops_test: OpsTest, app_integration_data: Callable) -> None:
+    """Verify JIMM requires verified database TLS and is reachable."""
+    assert await app_integration_data("jimm-db", "certificates"), "PostgreSQL certificates relation is missing"
+    await ops_test.model.wait_for_idle(apps=[APP_NAME, "jimm-db"], status="active", timeout=2000)
+    assert await get_database_dsn_options(ops_test) == {
+        "sslmode": ["verify-full"],
+        "sslrootcert": ["/var/lib/jimm/postgresql-ca.crt"],
+    }
+    jimm_address = await get_jimm_address(ops_test)
+    assert get_jimm(jimm_address, "/macaroons/publickey").status_code == 200
 
 
 async def test_certificate_transfer_integration(ops_test: OpsTest, app_integration_data: Callable) -> None:
@@ -81,7 +95,7 @@ async def test_jimm_oauth_browser_login(
     page: Page,
     context: BrowserContext,
 ):
-    """Run a playwright test to perform the browser login flow and confirm the session cookie is valid."""
+    """Verify browser authentication before and after disabling PostgreSQL TLS."""
 
     jimm_address = await get_jimm_address(ops_test)
     local_user_email = f"test-{secrets.token_hex(4)}@example.com"
@@ -140,6 +154,23 @@ async def test_jimm_oauth_browser_login(
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     result = sock.connect_ex((traefik_lb_ip, 17022))
     assert result == 0
+
+    logger.info("removing PostgreSQL's certificate relation to verify the fallback path")
+    await asyncio.wait_for(
+        ops_test.model.applications["jimm-db"].remove_relation(
+            "certificates", "postgresql-certificates:certificates", block_until_done=True
+        ),
+        timeout=300,
+    )
+    await ops_test.model.wait_for_idle(apps=[APP_NAME, "jimm-db", "openfga"], status="active", timeout=2000)
+    assert await get_database_dsn_options(ops_test) == {}
+    request = get_jimm(
+        jimm_address,
+        "/auth/whoami",
+        cookies={"jimm-browser-session": jimm_session_cookie},
+    )
+    assert request.status_code == 200
+    assert request.json()["email"] == local_user_email
 
 
 async def test_openfga_integration(openfga_integration_data: Optional[dict]) -> None:

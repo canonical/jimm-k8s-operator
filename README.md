@@ -33,3 +33,5 @@ For more detailed instructions on deploying and using JIMM, please visit our [do
 ## Contributing
 
 Please see the [Juju SDK documentation](https://juju.is/docs/sdk) for more information about developing and improving charms. For developer guidance please check our contribution [guideline](CONTRIBUTING.md).
+
+For manual authenticated API testing, see the [developer guide](CONTRIBUTING.md#manual-authenticated-api-testing).
