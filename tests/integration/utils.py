@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 from pathlib import Path
+from typing import Optional
 from urllib.parse import parse_qs, urlsplit
 
 import requests
@@ -153,7 +154,7 @@ async def deploy_jimm(
     charm: Path,
     hydra_app_name: str,
     self_signed_certificates_app_name: str,
-    ext_idp_service: ExternalIdpService,
+    ext_idp_service: Optional[ExternalIdpService],
 ) -> None:
     """(Optionally) Build and then deploy JIMM and all dependencies.
 
@@ -169,8 +170,16 @@ async def deploy_jimm(
     # Deploy the identity bundle first because it checks everything is in an active state and if we deploy JIMM apps
     # at the same time, then that check will fail.
     logger.info("deploying identity bundle")
-    bundle_path = Path(__file__).parent / "identity-bundle.yaml"
-    await deploy_identity_bundle(ops_test=ops_test, bundle_url=str(bundle_path), ext_idp_service=ext_idp_service)
+    bundle_name = "identity-bundle.yaml" if ext_idp_service is not None else "identity-bundle-arm64.yaml"
+    bundle_path = Path(__file__).parent / bundle_name
+    bundle = yaml.safe_load(bundle_path.read_text())
+    if ext_idp_service is not None:
+        await deploy_identity_bundle(ops_test=ops_test, bundle_url=str(bundle_path), ext_idp_service=ext_idp_service)
+    else:
+        await ops_test.model.set_constraints({"arch": "arm64"})
+        logger.info("deploying identity bundle without the external IdP integrator")
+        await ops_test.juju("deploy", str(bundle_path), "--trust", check=True)
+        await ops_test.model.wait_for_idle(apps=list(bundle["applications"]), status="active", timeout=2000)
 
     logger.info("configuring identity bundle ingress hostnames")
     admin_external_ip, public_external_ip = await asyncio.gather(
@@ -184,6 +193,7 @@ async def deploy_jimm(
 
     # Deploy the charm and wait for active/idle status
     logger.info("deploying charms")
+    traefik_base = bundle["applications"]["traefik-public"].get("base")
     async with ops_test.fast_forward():
         await asyncio.gather(
             ops_test.model.deploy(
@@ -210,16 +220,23 @@ async def deploy_jimm(
                 "self-signed-certificates",
                 application_name="postgresql-certificates",
                 channel="1/stable",
+                base=bundle["applications"]["self-signed-certificates"].get("base"),
             ),
-            ops_test.model.deploy(
+            ops_test.juju(
+                "deploy",
                 "openfga-k8s",
-                application_name="openfga",
-                channel="latest/stable",
+                "openfga",
+                "--channel=latest/stable",
+                *(["--resource=oci-image=ghcr.io/canonical/openfga:1.14.2"] if ext_idp_service is None else []),
+                check=True,
             ),
-            ops_test.model.deploy(
+            ops_test.juju(
+                "deploy",
                 "traefik-k8s",
-                application_name="traefik",
-                channel="latest/stable",
+                "traefik",
+                "--channel=latest/stable",
+                *([f"--base={traefik_base}"] if traefik_base else []),
+                check=True,
             ),
         )
 
