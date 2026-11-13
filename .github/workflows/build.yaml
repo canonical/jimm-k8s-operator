@@ -5,16 +5,24 @@ on:
 
 jobs:
   build-charm:
-    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
           fetch-depth: 0
           fetch-tags: true
       - run: sudo snap install charmcraft --channel=4.x/stable --classic
-      - run: sudo charmcraft pack --destructive-mode --verbosity=trace
+      - run: sudo charmcraft pack --build-for=${{ matrix.arch }} --destructive-mode --verbosity=trace
       - uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         with:
-          name: jimm-k8s-charm
+          name: jimm-k8s-charm-${{ matrix.arch }}
           path: ./*.charm
           if-no-files-found: error
