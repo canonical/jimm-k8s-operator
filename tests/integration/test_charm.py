@@ -5,6 +5,7 @@
 import asyncio
 import json
 import logging
+import os
 import re
 import secrets
 import socket
@@ -12,11 +13,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 import pytest
-from oauth_tools import (
-    ExternalIdpService,
-    access_application_login_page,
-    get_cookie_from_browser_by_name,
-)
+from oauth_tools import access_application_login_page, get_cookie_from_browser_by_name
 from playwright.async_api import BrowserContext, Page
 from pytest_operator.plugin import OpsTest
 from utils import (
@@ -40,12 +37,13 @@ async def test_build_and_deploy(
     charm: Path,
     hydra_app_name: str,
     self_signed_certificates_app_name: str,
-    ext_idp_service: ExternalIdpService,
+    request: pytest.FixtureRequest,
 ) -> None:
     """Build the charm-under-test and deploy it together with related charms."""
     # Build and deploy charm from local source folder
     # (Optionally build) and deploy charm from local source folder
 
+    ext_idp_service = None if os.getenv("SKIP_EXTERNAL_IDP") == "1" else request.getfixturevalue("ext_idp_service")
     await deploy_jimm(ops_test, charm, hydra_app_name, self_signed_certificates_app_name, ext_idp_service)
 
 

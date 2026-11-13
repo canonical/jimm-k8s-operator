@@ -36,10 +36,18 @@ jobs:
         run: tox -e unit
 
   integration-tests:
-    name: Integration tests
+    name: Integration tests (${{ matrix.arch }})
     needs:
       - charm-build
-    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       # This action needs a decent amount of disk space for the deployment
       # and with Github runners we are seeing the Postgres charm report 
@@ -66,7 +74,7 @@ jobs:
       - name: Setup operator environment
         uses: charmed-kubernetes/actions-operator@main
         with:
-          channel: 1.28-strict/stable
+          channel: ${{ matrix.arch == 'arm64' && '1.36-strict/candidate' || '1.28-strict/stable' }}
           juju-channel: 3.6/stable
           provider: microk8s
           microk8s-group: snap_microk8s
@@ -86,10 +94,12 @@ jobs:
       # Download the charm from the build to speed up integration tests.
       - uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
         with:
-          name: jimm-k8s-charm
+          name: jimm-k8s-charm-${{ matrix.arch }}
       - name: Install tox
         run: python -m pip install tox
       - name: Integration tests
+        env:
+          SKIP_EXTERNAL_IDP: ${{ matrix.arch == 'arm64' && '1' || '0' }}
         run: tox -e integration -- --localCharm
       - name: Dump logs
         if: failure()
