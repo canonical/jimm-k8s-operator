@@ -18,10 +18,18 @@ jobs:
     name: Release charm
     needs:
       - charm-tests
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
     permissions:
       contents: write # Needed to tag the release
       packages: read # Needed to log into ghcr.io
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -35,9 +43,21 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
+        with:
+          name: jimm-k8s-charm-${{ matrix.arch }}
+      - name: Locate built charm
+        id: charm
+        run: |
+          charms=(./*.charm)
+          test "${#charms[@]}" -eq 1
+          test -f "${charms[0]}"
+          echo "path=${charms[0]}" >> "$GITHUB_OUTPUT"
       - name: Upload charm to charmhub
         uses: canonical/charming-actions/upload-charm@934193396735701141a1decc3613818e412da606 # 2.6.3
         with:
           credentials: "${{ secrets.CHARMHUB_TOKEN }}"
           github-token: "${{ secrets.GITHUB_TOKEN }}"
           channel: "3/edge"
+          built-charm-path: ${{ steps.charm.outputs.path }}
+          tag-prefix: ${{ matrix.arch }}-
